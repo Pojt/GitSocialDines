@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { dbService } from '../lib/dbService';
+import { app } from '../lib/firebase';
 import { Booking } from '../types';
 import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, Clock, CheckCircle2, XCircle, ChevronRight, MessageSquare, Star } from 'lucide-react';
+import { Calendar, CheckCircle2, ChevronRight, MessageSquare, Star, CreditCard, BadgeCheck, AlertCircle, MessageCircle, XCircle } from 'lucide-react';
 
 const StatusBadge = ({ status }: { status: Booking['status'] }) => {
   const styles = {
@@ -13,7 +15,6 @@ const StatusBadge = ({ status }: { status: Booking['status'] }) => {
     rejected: 'bg-rose-50 text-rose-600 border-rose-100',
     cancelled: 'bg-stone-50 text-stone-600 border-stone-100'
   };
-
   return (
     <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${styles[status]}`}>
       {status}
@@ -21,12 +22,33 @@ const StatusBadge = ({ status }: { status: Booking['status'] }) => {
   );
 };
 
+const PaymentBadge = ({ status }: { status: Booking['paymentStatus'] }) => {
+  if (!status || status === 'unpaid') return null;
+  const config = {
+    awaiting_payment: { label: 'Payment pending', cls: 'bg-amber-50 text-amber-600 border-amber-100' },
+    paid: { label: 'Paid', cls: 'bg-emerald-50 text-emerald-600 border-emerald-100' },
+    failed: { label: 'Payment failed', cls: 'bg-rose-50 text-rose-600 border-rose-100' }
+  }[status];
+  if (!config) return null;
+  return (
+    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-1 ${config.cls}`}>
+      <CreditCard size={10} />
+      {config.label}
+    </span>
+  );
+};
+
 export const Bookings: React.FC = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [hostBookings, setHostBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+
+  const paymentResult = new URLSearchParams(location.search).get('payment');
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -62,6 +84,42 @@ export const Bookings: React.FC = () => {
     fetchData();
   };
 
+  const handlePay = async (bookingId: string) => {
+    setPayingBookingId(bookingId);
+    try {
+      const fns = getFunctions(app);
+      const createSession = httpsCallable<{ bookingId: string }, { url: string }>(fns, 'createCheckoutSession');
+      const result = await createSession({ bookingId });
+      window.location.href = result.data.url;
+    } catch (err) {
+      console.error('Payment error:', err);
+      setPayingBookingId(null);
+    }
+  };
+
+  const handleCancel = async (booking: Booking) => {
+    if (!window.confirm('Are you sure you want to cancel this booking?' + (booking.paymentStatus === 'paid' ? ' A refund will be initiated.' : ''))) return;
+    setCancellingBookingId(booking.id);
+    try {
+      const fns = getFunctions(app);
+      const cancel = httpsCallable<{ bookingId: string }, { success: boolean; refunded: boolean }>(fns, 'cancelBooking');
+      await cancel({ bookingId: booking.id });
+      await fetchData();
+    } catch (err) {
+      console.error('Cancel error:', err);
+    } finally {
+      setCancellingBookingId(null);
+    }
+  };
+
+  const handleOpenMessage = async (booking: Booking) => {
+    if (!user || !booking.dinner) return;
+    const conversationId = await dbService.getOrCreateConversation(
+      booking.hostId, booking.guestId, booking.dinnerId, booking.dinner.title
+    );
+    navigate(`/messages/${conversationId}`);
+  };
+
   const filteredBookings = activeTab === 'Hosting' 
     ? hostBookings 
     : bookings.filter(b => {
@@ -81,6 +139,27 @@ export const Bookings: React.FC = () => {
         <h1 className="text-4xl sm:text-5xl font-serif font-medium text-ink mb-4">Your dining timeline</h1>
         <p className="text-stone-500 font-medium opacity-70 italic font-serif">Keep track of your seats and dinner conversations.</p>
       </div>
+
+      {/* Payment result banner */}
+      <AnimatePresence>
+        {paymentResult && (
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            className={`mb-8 flex items-center gap-3 px-6 py-4 rounded-2xl border text-sm font-medium ${
+              paymentResult === 'success'
+                ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                : 'bg-amber-50 border-amber-100 text-amber-700'
+            }`}
+          >
+            {paymentResult === 'success' ? <BadgeCheck size={18} /> : <AlertCircle size={18} />}
+            {paymentResult === 'success'
+              ? 'Payment successful — see you at the table!'
+              : 'Payment was cancelled. You can try again from your upcoming bookings.'}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Tabs */}
       <div className="flex border-b border-brand-light mb-10 overflow-x-auto no-scrollbar">
@@ -134,8 +213,9 @@ export const Bookings: React.FC = () => {
                       alt={booking.dinner?.title} 
                     />
                     <div>
-                       <div className="flex items-center space-x-3 mb-2">
+                       <div className="flex items-center flex-wrap gap-2 mb-2">
                          <StatusBadge status={booking.status} />
+                         <PaymentBadge status={booking.paymentStatus} />
                          <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">
                             {new Date(booking.dinner?.date || 0).toLocaleDateString()}
                          </span>
@@ -159,26 +239,68 @@ export const Bookings: React.FC = () => {
                   </div>
 
                   <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
-                    {activeTab === 'Hosting' && booking.status === 'pending' && (
-                       <div className="flex gap-2">
-                         <button 
-                           onClick={() => handleUpdateStatus(booking, 'confirmed')}
-                           className="bg-brand text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
-                         >Accept</button>
-                         <button 
-                           onClick={() => handleUpdateStatus(booking, 'rejected')}
-                           className="bg-stone-100 text-stone-500 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
-                         >Decline</button>
-                       </div>
+                    {activeTab === 'Hosting' && (
+                      <div className="flex flex-col gap-2 items-end">
+                        {booking.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleUpdateStatus(booking, 'confirmed')}
+                              className="bg-brand text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
+                            >Accept</button>
+                            <button
+                              onClick={() => handleUpdateStatus(booking, 'rejected')}
+                              className="bg-stone-100 text-stone-500 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
+                            >Decline</button>
+                          </div>
+                        )}
+                        {booking.status === 'confirmed' && (
+                          <button
+                            onClick={() => handleOpenMessage(booking)}
+                            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-brand transition-colors"
+                          >
+                            <MessageCircle size={13} />
+                            Message Guest
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {activeTab === 'Upcoming' && (
-                       <button 
-                         onClick={() => setSelectedBooking(booking)}
-                         className="olive-btn !py-2 !px-5 !text-[10px]"
-                       >
-                         Next Steps
-                       </button>
+                      <div className="flex flex-col gap-2 items-end">
+                        {(!booking.paymentStatus || booking.paymentStatus === 'unpaid' || booking.paymentStatus === 'failed') && (
+                          <button
+                            onClick={() => handlePay(booking.id)}
+                            disabled={payingBookingId === booking.id}
+                            className="flex items-center gap-2 olive-btn !py-2 !px-5 !text-[10px]"
+                          >
+                            <CreditCard size={12} />
+                            {payingBookingId === booking.id ? 'Redirecting...' : 'Complete Payment'}
+                          </button>
+                        )}
+                        {booking.paymentStatus === 'paid' && (
+                          <button
+                            onClick={() => setSelectedBooking(booking)}
+                            className="olive-btn !py-2 !px-5 !text-[10px]"
+                          >
+                            Next Steps
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleOpenMessage(booking)}
+                          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-brand transition-colors"
+                        >
+                          <MessageCircle size={13} />
+                          Message Host
+                        </button>
+                        <button
+                          onClick={() => handleCancel(booking)}
+                          disabled={cancellingBookingId === booking.id}
+                          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-rose-400 hover:text-rose-600 transition-colors disabled:opacity-50"
+                        >
+                          <XCircle size={13} />
+                          {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
+                        </button>
+                      </div>
                     )}
 
                     {activeTab === 'Past' && booking.status === 'confirmed' && (

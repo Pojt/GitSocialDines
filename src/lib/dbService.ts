@@ -1,19 +1,21 @@
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  getDoc, 
-  doc, 
-  addDoc, 
-  updateDoc, 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  doc,
+  addDoc,
+  updateDoc,
+  setDoc,
+  deleteDoc,
   serverTimestamp,
   orderBy,
   limit,
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { Dinner, UserProfile, Booking, Review } from '../types';
+import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry, Conversation, HostAnalytics } from '../types';
 
 export const dbService = {
   async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
@@ -171,38 +173,53 @@ export const dbService = {
       ]);
 
       if (guest && host && dinner) {
-        // Notify Guest
-        await this.queueEmail(
-          [guest.id],
-          `Booking Request Sent: ${dinner.title}`,
-          `Hi ${guest.displayName}, your request to join ${dinner.title} for ${booking.guestCount} guests has been sent.`,
-          `<div style="font-family: sans-serif; color: #1c1917;">
-            <h2 style="color: #61694b;">Booking Request Sent!</h2>
-            <p>Hi ${guest.displayName},</p>
-            <p>Your request to join <strong>${dinner.title}</strong> has been sent to the host.</p>
-            <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
-              <p><strong>Table:</strong> ${dinner.title}</p>
-              <p><strong>Guests:</strong> ${booking.guestCount}</p>
-              <p><strong>Status:</strong> Pending Host Approval</p>
-            </div>
-          </div>`
-        );
+        if (guest.email) {
+          await this.queueEmail(
+            [guest.email],
+            `Booking Request Sent: ${dinner.title}`,
+            `Hi ${guest.displayName}, your request to join ${dinner.title} for ${booking.guestCount} guests has been sent.`,
+            `<div style="font-family: sans-serif; color: #1c1917;">
+              <h2 style="color: #61694b;">Booking Request Sent!</h2>
+              <p>Hi ${guest.displayName},</p>
+              <p>Your request to join <strong>${dinner.title}</strong> has been sent to the host.</p>
+              <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
+                <p><strong>Table:</strong> ${dinner.title}</p>
+                <p><strong>Guests:</strong> ${booking.guestCount}</p>
+                <p><strong>Status:</strong> Pending Host Approval</p>
+              </div>
+            </div>`
+          );
+        }
 
-        // Notify Host
-        await this.queueEmail(
-          [host.id],
-          `New Booking Request: ${dinner.title}`,
-          `Hi ${host.displayName}, ${guest.displayName} wants to join your table ${dinner.title}.`,
-          `<div style="font-family: sans-serif; color: #1c1917;">
-            <h2 style="color: #61694b;">New Seat Request!</h2>
-            <p>Hi ${host.displayName},</p>
-            <p><strong>${guest.displayName}</strong> would like to join your table <strong>${dinner.title}</strong>.</p>
-            <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
-              <p><strong>Message:</strong> "${booking.message}"</p>
-              <p><strong>Guests:</strong> ${booking.guestCount}</p>
-            </div>
-          </div>`
-        );
+        if (host.email) {
+          await this.queueEmail(
+            [host.email],
+            `New Booking Request: ${dinner.title}`,
+            `Hi ${host.displayName}, ${guest.displayName} wants to join your table ${dinner.title}.`,
+            `<div style="font-family: sans-serif; color: #1c1917;">
+              <h2 style="color: #61694b;">New Seat Request!</h2>
+              <p>Hi ${host.displayName},</p>
+              <p><strong>${guest.displayName}</strong> would like to join your table <strong>${dinner.title}</strong>.</p>
+              <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
+                <p><strong>Message:</strong> "${booking.message}"</p>
+                <p><strong>Guests:</strong> ${booking.guestCount}</p>
+              </div>
+            </div>`
+          );
+        }
+
+        await Promise.all([
+          this.createNotification(booking.guestId, {
+            type: 'booking_request',
+            message: `Your request to join "${dinner.title}" is pending host approval.`,
+            link: '/bookings'
+          }),
+          this.createNotification(booking.hostId, {
+            type: 'booking_request',
+            message: `${guest.displayName} wants to join your table "${dinner.title}".`,
+            link: '/bookings'
+          })
+        ]);
       }
 
       return docRef;
@@ -267,6 +284,124 @@ export const dbService = {
     }
   },
 
+  async createNotification(userId: string, notif: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>) {
+    try {
+      await addDoc(collection(db, 'notifications', userId, 'items'), {
+        ...notif,
+        isRead: false,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      console.error('Failed to create notification:', error);
+    }
+  },
+
+  async markNotificationRead(userId: string, notifId: string) {
+    try {
+      await updateDoc(doc(db, 'notifications', userId, 'items', notifId), { isRead: true });
+    } catch (error) {
+      console.error('Failed to mark notification read:', error);
+    }
+  },
+
+  async markAllNotificationsRead(userId: string) {
+    try {
+      const q = query(
+        collection(db, 'notifications', userId, 'items'),
+        where('isRead', '==', false)
+      );
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.update(d.ref, { isRead: true }));
+      await batch.commit();
+    } catch (error) {
+      console.error('Failed to mark all notifications read:', error);
+    }
+  },
+
+  async getOrCreateConversation(hostId: string, guestId: string, dinnerId: string, dinnerTitle: string): Promise<string> {
+    const conversationId = `${hostId}_${guestId}_${dinnerId}`;
+    const ref = doc(db, 'conversations', conversationId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        hostId, guestId, dinnerId, dinnerTitle,
+        participants: [hostId, guestId],
+        lastMessage: '',
+        lastMessageAt: Date.now(),
+        createdAt: Date.now()
+      } as Omit<Conversation, 'id'>);
+    }
+    return conversationId;
+  },
+
+  async sendMessage(conversationId: string, senderId: string, text: string) {
+    try {
+      const conversationRef = doc(db, 'conversations', conversationId);
+      await Promise.all([
+        addDoc(collection(db, 'conversations', conversationId, 'messages'), {
+          senderId,
+          text,
+          createdAt: Date.now()
+        }),
+        updateDoc(conversationRef, { lastMessage: text, lastMessageAt: Date.now() })
+      ]);
+
+      // Notify the other participant
+      const convSnap = await getDoc(conversationRef);
+      if (convSnap.exists()) {
+        const conv = convSnap.data() as Conversation;
+        const recipientId = senderId === conv.hostId ? conv.guestId : conv.hostId;
+        await this.createNotification(recipientId, {
+          type: 'new_message',
+          message: `New message about "${conv.dinnerTitle}"`,
+          link: `/messages/${conversationId}`
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `conversations/${conversationId}/messages`);
+    }
+  },
+
+  async addToWaitlist(userId: string, dinnerId: string, hostId: string, guestCount: number) {
+    try {
+      await setDoc(doc(db, 'waitlist', `${userId}_${dinnerId}`), {
+        userId, dinnerId, hostId, guestCount, joinedAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'waitlist');
+    }
+  },
+
+  async removeFromWaitlist(userId: string, dinnerId: string) {
+    try {
+      await deleteDoc(doc(db, 'waitlist', `${userId}_${dinnerId}`));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'waitlist');
+    }
+  },
+
+  async getWaitlistEntry(userId: string, dinnerId: string): Promise<WaitlistEntry | null> {
+    try {
+      const snap = await getDoc(doc(db, 'waitlist', `${userId}_${dinnerId}`));
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() } as WaitlistEntry;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  async getUserWaitlist(userId: string): Promise<WaitlistEntry[]> {
+    try {
+      const q = query(collection(db, 'waitlist'), where('userId', '==', userId), orderBy('joinedAt', 'desc'));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }) as WaitlistEntry);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'waitlist');
+      return [];
+    }
+  },
+
   async getFavorites(dinnerIds: string[]) {
     try {
       if (!dinnerIds || dinnerIds.length === 0) return [];
@@ -309,43 +444,135 @@ export const dbService = {
     }
   },
 
+  async getHostAnalytics(hostId: string): Promise<HostAnalytics> {
+    try {
+      const dinnersSnap = await getDocs(
+        query(collection(db, 'dinners'), where('hostId', '==', hostId))
+      );
+      const priceMap: Record<string, number> = {};
+      let completedDinners = 0;
+      const now = Date.now();
+      dinnersSnap.docs.forEach(d => {
+        const data = d.data();
+        priceMap[d.id] = data.price as number;
+        if ((data.date as number) < now) completedDinners++;
+      });
+
+      const bookingsSnap = await getDocs(
+        query(collection(db, 'bookings'), where('hostId', '==', hostId), where('status', '==', 'confirmed'))
+      );
+      let totalGuests = 0;
+      let totalEarnings = 0;
+      bookingsSnap.docs.forEach(d => {
+        const data = d.data();
+        const count = (data.guestCount as number) || 1;
+        totalGuests += count;
+        totalEarnings += count * (priceMap[data.dinnerId] || 0);
+      });
+
+      const reviewsSnap = await getDocs(
+        query(collection(db, 'reviews'), where('targetId', '==', hostId))
+      );
+      let averageRating = 0;
+      if (reviewsSnap.size > 0) {
+        const sum = reviewsSnap.docs.reduce((acc, d) => acc + ((d.data().rating as number) || 0), 0);
+        averageRating = Math.round((sum / reviewsSnap.size) * 100) / 100;
+      }
+
+      return { totalEarnings, totalGuests, completedDinners, averageRating };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, 'analytics');
+      return { totalEarnings: 0, totalGuests: 0, completedDinners: 0, averageRating: 0 };
+    }
+  },
+
   async updateBookingStatus(bookingId: string, status: Booking['status'], dinnerId: string, newGuestCount?: number) {
     try {
-      const batch = writeBatch(db);
-      
       const bookingRef = doc(db, 'bookings', bookingId);
+      const existingBookingSnap = await getDoc(bookingRef);
+      if (!existingBookingSnap.exists()) return false;
+      const existingBooking = existingBookingSnap.data() as Booking;
+
+      const batch = writeBatch(db);
       batch.update(bookingRef, { status });
 
       if (status === 'confirmed' && newGuestCount !== undefined) {
         const dinnerRef = doc(db, 'dinners', dinnerId);
         batch.update(dinnerRef, { guestsCount: newGuestCount });
+        // Write confirmedAttendance so the guest can leave a review
+        const attendanceRef = doc(db, 'confirmedAttendances', `${existingBooking.guestId}_${dinnerId}`);
+        batch.set(attendanceRef, { guestId: existingBooking.guestId, dinnerId, confirmedAt: Date.now() });
+      }
+
+      if (status === 'cancelled' && existingBooking.status === 'confirmed') {
+        const dinnerSnap = await getDoc(doc(db, 'dinners', dinnerId));
+        if (dinnerSnap.exists()) {
+          const currentCount = (dinnerSnap.data().guestsCount as number) || 0;
+          const decrement = existingBooking.guestCount || 1;
+          batch.update(doc(db, 'dinners', dinnerId), {
+            guestsCount: Math.max(0, currentCount - decrement)
+          });
+        }
       }
 
       await batch.commit();
 
-      // Send status update email to guest
-      const bookingDoc = await getDoc(bookingRef);
-      if (bookingDoc.exists()) {
-        const bookingData = bookingDoc.data() as Booking;
+      // After a confirmed booking is cancelled, notify the first person on the waitlist
+      if (status === 'cancelled' && existingBooking.status === 'confirmed') {
+        const waitlistQ = query(
+          collection(db, 'waitlist'),
+          where('dinnerId', '==', dinnerId),
+          orderBy('joinedAt', 'asc'),
+          limit(1)
+        );
+        const waitlistSnap = await getDocs(waitlistQ);
+        if (!waitlistSnap.empty) {
+          const first = waitlistSnap.docs[0];
+          const entry = first.data() as WaitlistEntry;
+          const dinner = await this.getDinner(dinnerId);
+          if (dinner) {
+            await Promise.all([
+              this.createNotification(entry.userId, {
+                type: 'booking_confirmed',
+                message: `A seat just opened at "${dinner.title}" — you're first on the waitlist!`,
+                link: `/dinner/${dinnerId}`
+              }),
+              deleteDoc(first.ref)
+            ]);
+          }
+        }
+      }
+
+      if (status === 'confirmed' || status === 'rejected') {
         const [guest, dinner] = await Promise.all([
-          this.getUserProfile(bookingData.guestId),
+          this.getUserProfile(existingBooking.guestId),
           this.getDinner(dinnerId)
         ]);
 
-        if (guest && dinner && status === 'confirmed') {
-          await this.queueEmail(
-            [guest.id],
-            `Booking Confirmed! ${dinner.title}`,
-            `Great news! Your booking for ${dinner.title} has been confirmed.`,
-            `<div style="font-family: sans-serif; color: #1c1917;">
-              <h2 style="color: #61694b;">You're in!</h2>
-              <p>Hi ${guest.displayName},</p>
-              <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
-              <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
-                <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
-              </div>
-            </div>`
-          );
+        if (guest && dinner) {
+          if (status === 'confirmed' && guest.email) {
+            await this.queueEmail(
+              [guest.email],
+              `Booking Confirmed! ${dinner.title}`,
+              `Great news! Your booking for ${dinner.title} has been confirmed.`,
+              `<div style="font-family: sans-serif; color: #1c1917;">
+                <h2 style="color: #61694b;">You're in!</h2>
+                <p>Hi ${guest.displayName},</p>
+                <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
+                <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
+                  <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
+                </div>
+              </div>`
+            );
+          }
+
+          await this.createNotification(existingBooking.guestId, {
+            type: status === 'confirmed' ? 'booking_confirmed' : 'booking_rejected',
+            message: status === 'confirmed'
+              ? `Your booking for "${dinner.title}" has been confirmed!`
+              : `Your booking request for "${dinner.title}" was not accepted.`,
+            link: '/bookings'
+          });
         }
       }
 

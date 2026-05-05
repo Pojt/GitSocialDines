@@ -4,8 +4,9 @@ import { useAuth } from '../AuthContext';
 import { dbService } from '../lib/dbService';
 import { CUISINES } from '../constants';
 import { motion } from 'motion/react';
-import { Calendar, Users, DollarSign, Camera, ChefHat, Sparkles, AlertCircle, ArrowLeft, MapPin } from 'lucide-react';
+import { Calendar, Users, DollarSign, ChefHat, Sparkles, AlertCircle, ArrowLeft } from 'lucide-react';
 import { LocationPicker } from '../components/LocationPicker';
+import { ImageUpload } from '../components/ImageUpload';
 
 export const CreateDinner: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -339,17 +340,13 @@ export const CreateDinner: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Cover Image URL</label>
-                <div className="relative">
-                  <Camera className="absolute left-6 top-1/2 -translate-y-1/2 text-brand opacity-40" size={18} />
-                  <input 
-                    type="url"
-                    placeholder="https://images.unsplash.com/..."
-                    className="w-full bg-[#F2F1EA]/50 border border-brand-light rounded-full pl-14 pr-6 py-4 focus:border-brand/40 focus:outline-none transition-all text-ink text-xs font-bold"
-                    value={formData.imageUrl}
-                    onChange={e => setFormData({ ...formData, imageUrl: e.target.value })}
-                  />
-                </div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Cover Image</label>
+                <ImageUpload
+                  value={formData.imageUrl}
+                  onChange={url => setFormData({ ...formData, imageUrl: url })}
+                  storagePath={`dinners/${user?.uid}`}
+                  label="Upload Cover Photo"
+                />
               </div>
             </div>
           </div>

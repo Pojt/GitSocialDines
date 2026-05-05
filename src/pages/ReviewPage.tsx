@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { getDoc, doc, getDocs, query, collection, where } from 'firebase/firestore';
+import { db } from '../lib/firebase';
 import { dbService } from '../lib/dbService';
 import { useAuth } from '../AuthContext';
 import { motion } from 'motion/react';
-import { Star, MessageSquare, ArrowLeft, Heart, Sparkles, Smile } from 'lucide-react';
+import { Star, MessageSquare, ArrowLeft, Heart, Sparkles, Smile, AlertCircle, CheckCircle } from 'lucide-react';
 
 const MOODS = [
   { label: 'Warm', icon: <Heart size={16} /> },
@@ -20,6 +22,24 @@ export const ReviewPage: React.FC = () => {
   const [content, setContent] = useState('');
   const [mood, setMood] = useState('Warm');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [verifying, setVerifying] = useState(true);
+  const [canReview, setCanReview] = useState(false);
+  const [alreadyReviewed, setAlreadyReviewed] = useState(false);
+
+  useEffect(() => {
+    if (!user || !dinnerId) return;
+    const verify = async () => {
+      setVerifying(true);
+      const [attendanceSnap, reviewsSnap] = await Promise.all([
+        getDoc(doc(db, 'confirmedAttendances', `${user.uid}_${dinnerId}`)),
+        getDocs(query(collection(db, 'reviews'), where('authorId', '==', user.uid), where('dinnerId', '==', dinnerId)))
+      ]);
+      setCanReview(attendanceSnap.exists());
+      setAlreadyReviewed(!reviewsSnap.empty);
+      setVerifying(false);
+    };
+    verify();
+  }, [user, dinnerId]);
 
   const handleSubmit = async () => {
     if (!user || !dinnerId) return;
@@ -44,12 +64,36 @@ export const ReviewPage: React.FC = () => {
     }
   };
 
+  if (verifying) {
+    return (
+      <div className="pt-32 flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-brand/20 border-t-brand rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="pt-24 pb-20 max-w-2xl mx-auto px-4 sm:px-6">
       <button onClick={() => navigate(-1)} className="flex items-center space-x-2 text-stone-400 hover:text-brand transition-colors mb-8 text-xs font-bold uppercase tracking-widest">
          <ArrowLeft size={16} />
          <span>Go back</span>
       </button>
+
+      {alreadyReviewed ? (
+        <div className="bg-white rounded-[3rem] p-8 sm:p-12 border border-stone-100 shadow-2xl shadow-stone-200/50 text-center">
+          <CheckCircle className="mx-auto text-emerald-500 mb-4" size={48} />
+          <h2 className="text-2xl font-serif font-black text-stone-900 mb-2">Review Already Submitted</h2>
+          <p className="text-stone-500 font-medium">You've already left a review for this dinner. Thank you!</p>
+          <button onClick={() => navigate('/bookings')} className="mt-8 olive-btn">Back to Bookings</button>
+        </div>
+      ) : !canReview ? (
+        <div className="bg-white rounded-[3rem] p-8 sm:p-12 border border-stone-100 shadow-2xl shadow-stone-200/50 text-center">
+          <AlertCircle className="mx-auto text-amber-400 mb-4" size={48} />
+          <h2 className="text-2xl font-serif font-black text-stone-900 mb-2">Attendance Required</h2>
+          <p className="text-stone-500 font-medium">You can only review a dinner you attended with a confirmed booking.</p>
+          <button onClick={() => navigate('/bookings')} className="mt-8 olive-btn">Back to Bookings</button>
+        </div>
+      ) : (
 
       <div className="bg-white rounded-[3rem] p-8 sm:p-12 border border-stone-100 shadow-2xl shadow-stone-200/50">
         <h1 className="text-4xl font-serif font-black text-stone-900 mb-2">How was the table?</h1>
@@ -104,7 +148,7 @@ export const ReviewPage: React.FC = () => {
             />
           </div>
 
-          <button 
+          <button
             disabled={isSubmitting || !content.trim()}
             onClick={handleSubmit}
             className="w-full bg-brand text-white py-5 rounded-full font-serif font-black text-xl hover:bg-brand/90 transition-all active:scale-[0.98] shadow-xl shadow-brand/20 disabled:opacity-50"
@@ -113,6 +157,8 @@ export const ReviewPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      )}
     </div>
   );
 };
