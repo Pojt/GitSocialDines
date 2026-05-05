@@ -117,6 +117,7 @@ export const stripeWebhook = onRequest(
         bookingId,
         guestId,
         stripeSessionId: session.id,
+        paymentIntentId: session.payment_intent as string | null,
         amount: session.amount_total,
         currency: session.currency,
         status: 'succeeded',
@@ -148,5 +149,101 @@ export const stripeWebhook = onRequest(
     }
 
     res.json({ received: true });
+  }
+);
+
+/**
+ * Callable: cancel a confirmed booking and refund if already paid.
+ * Guest-only — validates ownership before proceeding.
+ */
+export const cancelBooking = onCall(
+  { secrets: [stripeSecretKey] },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
+
+    const { bookingId } = request.data as { bookingId: string };
+    if (!bookingId) throw new HttpsError('invalid-argument', 'bookingId is required');
+
+    const bookingRef = db.collection('bookings').doc(bookingId);
+    const bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists) throw new HttpsError('not-found', 'Booking not found');
+    const booking = bookingSnap.data()!;
+
+    if (booking.guestId !== uid) {
+      throw new HttpsError('permission-denied', 'Not your booking');
+    }
+    if (booking.status !== 'confirmed') {
+      throw new HttpsError('failed-precondition', 'Only confirmed bookings can be cancelled');
+    }
+
+    let refunded = false;
+
+    // Issue refund if the booking was paid
+    if (booking.paymentStatus === 'paid') {
+      const paymentsSnap = await db
+        .collection('payments')
+        .where('bookingId', '==', bookingId)
+        .where('status', '==', 'succeeded')
+        .limit(1)
+        .get();
+
+      if (!paymentsSnap.empty) {
+        const paymentIntentId = paymentsSnap.docs[0].data().paymentIntentId as string | undefined;
+        if (paymentIntentId) {
+          await stripe().refunds.create({ payment_intent: paymentIntentId });
+          refunded = true;
+        }
+      }
+    }
+
+    // Update booking and decrement guestsCount in a batch
+    const batch = db.batch();
+    batch.update(bookingRef, { status: 'cancelled', paymentStatus: refunded ? 'refunded' : booking.paymentStatus });
+
+    const dinnerRef = db.collection('dinners').doc(booking.dinnerId);
+    const dinnerSnap = await dinnerRef.get();
+    if (dinnerSnap.exists) {
+      const currentCount = (dinnerSnap.data()!.guestsCount as number) || 0;
+      const decrement = (booking.guestCount as number) || 1;
+      batch.update(dinnerRef, { guestsCount: Math.max(0, currentCount - decrement) });
+    }
+    await batch.commit();
+
+    // Notify the guest
+    await db.collection('notifications').doc(uid).collection('items').add({
+      type: 'booking_cancelled',
+      message: refunded
+        ? `Your booking has been cancelled and a refund has been initiated.`
+        : `Your booking has been cancelled.`,
+      link: '/bookings',
+      isRead: false,
+      createdAt: Date.now()
+    });
+
+    // Notify the first person on the waitlist
+    const waitlistSnap = await db
+      .collection('waitlist')
+      .where('dinnerId', '==', booking.dinnerId)
+      .orderBy('joinedAt', 'asc')
+      .limit(1)
+      .get();
+
+    if (!waitlistSnap.empty && dinnerSnap.exists) {
+      const first = waitlistSnap.docs[0];
+      const entry = first.data();
+      await Promise.all([
+        db.collection('notifications').doc(entry.userId).collection('items').add({
+          type: 'booking_confirmed',
+          message: `A seat just opened at "${dinnerSnap.data()!.title}" — you're first on the waitlist!`,
+          link: `/dinner/${booking.dinnerId}`,
+          isRead: false,
+          createdAt: Date.now()
+        }),
+        first.ref.delete()
+      ]);
+    }
+
+    return { success: true, refunded };
   }
 );

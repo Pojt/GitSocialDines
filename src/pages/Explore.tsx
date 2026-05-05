@@ -26,6 +26,8 @@ export const Explore: React.FC = () => {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [soloFriendly, setSoloFriendly] = useState(false);
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [showFilters, setShowFilters] = useState(false);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
@@ -117,9 +119,17 @@ export const Explore: React.FC = () => {
 
       // Dietary filter
       if (selectedDiets.length > 0) {
-        filtered = filtered.filter(d => 
+        filtered = filtered.filter(d =>
           selectedDiets.every(diet => d.dietaryOptions?.includes(diet))
         );
+      }
+
+      // Price range filter
+      if (minPrice !== '') {
+        filtered = filtered.filter(d => d.price >= parseFloat(minPrice));
+      }
+      if (maxPrice !== '') {
+        filtered = filtered.filter(d => d.price <= parseFloat(maxPrice));
       }
       
       // Sort by distance if enabled
@@ -137,7 +147,7 @@ export const Explore: React.FC = () => {
       setLoading(false);
     };
     fetch();
-  }, [searchParams, soloFriendly, searchQuery, sortByDistance, userLocation]);
+  }, [searchParams, soloFriendly, searchQuery, sortByDistance, userLocation, minPrice, maxPrice]);
 
   const handleSearch = () => {
     const params: any = {
@@ -323,13 +333,45 @@ export const Explore: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Price Range */}
+                  <div className="pt-4 border-t border-brand-light/30">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400 mb-4">Price Range</h4>
+                    <div className="flex items-center gap-3">
+                      <div className="relative flex-1">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 text-sm font-bold">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Min"
+                          value={minPrice}
+                          onChange={e => setMinPrice(e.target.value)}
+                          className="w-full pl-8 pr-4 py-2.5 rounded-full bg-stone-50 border border-transparent focus:border-brand/30 focus:outline-none text-sm font-semibold text-ink"
+                        />
+                      </div>
+                      <span className="text-stone-300 font-bold">—</span>
+                      <div className="relative flex-1">
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 text-sm font-bold">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="Max"
+                          value={maxPrice}
+                          onChange={e => setMaxPrice(e.target.value)}
+                          className="w-full pl-8 pr-4 py-2.5 rounded-full bg-stone-50 border border-transparent focus:border-brand/30 focus:outline-none text-sm font-semibold text-ink"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Filter Footer */}
                   <div className="flex justify-between items-center pt-6 border-t border-brand-light/30">
-                    <button 
+                    <button
                       onClick={() => {
                         setActiveCuisine('All');
                         setSelectedDiets([]);
                         setSoloFriendly(false);
+                        setMinPrice('');
+                        setMaxPrice('');
                       }}
                       className="text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-ink transition-colors"
                     >
@@ -428,7 +470,7 @@ export const Explore: React.FC = () => {
               <RotateCcw className="mx-auto text-stone-200 mb-6" size={48} />
               <h3 className="serif text-3xl text-ink mb-2">No tables found</h3>
               <p className="text-stone-500 mb-8">Try adjusting your filters or search keywords.</p>
-              <button 
+              <button
                 onClick={() => {
                   setActiveCuisine('All');
                   setSearchQuery('');
@@ -436,6 +478,8 @@ export const Explore: React.FC = () => {
                   setDateQuery('');
                   setGuestCount(1);
                   setSoloFriendly(false);
+                  setMinPrice('');
+                  setMaxPrice('');
                 }}
                 className="olive-btn"
               >

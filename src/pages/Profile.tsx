@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { UserProfile, Dinner, WaitlistEntry } from '../types';
+import { UserProfile, Dinner, WaitlistEntry, HostAnalytics } from '../types';
 import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Calendar, Heart, ShieldCheck, Quote, Edit3, Save, X, Camera, History, Bookmark, BarChart3, TrendingUp, Users as UsersIcon, Star, ChefHat, Clock } from 'lucide-react';
+import { MapPin, Calendar, Heart, ShieldCheck, Quote, Edit3, Save, X, History, Bookmark, BarChart3, TrendingUp, Users as UsersIcon, Star, ChefHat, Clock } from 'lucide-react';
+import { ImageUpload } from '../components/ImageUpload';
 import { LocationInput } from '../components/LocationInput';
 import { DinnerCard } from '../components/DinnerCard';
 
@@ -20,6 +21,8 @@ export const Profile: React.FC = () => {
   const [pendingBookings, setPendingBookings] = useState<any[]>([]);
   const [waitlistEntries, setWaitlistEntries] = useState<WaitlistEntry[]>([]);
   const [waitlistDinners, setWaitlistDinners] = useState<Dinner[]>([]);
+  const [analytics, setAnalytics] = useState<HostAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const [editData, setEditData] = useState({
     displayName: '',
     bio: '',
@@ -81,6 +84,16 @@ export const Profile: React.FC = () => {
     };
     fetch();
   }, [user, profile?.favorites]);
+
+  useEffect(() => {
+    if (activeTab === 'analytics' && user && analytics === null && !analyticsLoading) {
+      setAnalyticsLoading(true);
+      dbService.getHostAnalytics(user.uid).then(data => {
+        setAnalytics(data);
+        setAnalyticsLoading(false);
+      });
+    }
+  }, [activeTab, user, analytics, analyticsLoading]);
 
   useEffect(() => {
     if (profile) {
@@ -165,13 +178,13 @@ export const Profile: React.FC = () => {
             </div>
             
             {isEditing && (
-              <div className="mt-4">
-                <input 
-                  type="text"
-                  placeholder="Photo URL"
-                  className="text-[10px] w-40 bg-stone-50 border border-brand-light rounded-full px-3 py-1.5 focus:outline-none focus:border-brand/40"
+              <div className="mt-4 w-48">
+                <ImageUpload
                   value={editData.photoURL}
-                  onChange={e => setEditData({ ...editData, photoURL: e.target.value })}
+                  onChange={url => setEditData({ ...editData, photoURL: url })}
+                  storagePath={`users/${user?.uid}/avatar`}
+                  label="Change Photo"
+                  previewClassName="w-40 h-40 object-cover rounded-[24px]"
                 />
               </div>
             )}
@@ -538,36 +551,56 @@ export const Profile: React.FC = () => {
                 )}
 
                {activeTab === 'analytics' && (
-                 <motion.div 
+                 <motion.div
                    key="analytics"
                    initial={{ opacity: 0, x: 20 }}
                    animate={{ opacity: 1, x: 0 }}
                    exit={{ opacity: 0, x: -20 }}
                  >
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-12">
-                      <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
-                        <TrendingUp className="text-brand mb-4" size={32} />
-                        <span className="text-4xl font-serif font-bold text-ink">$2,450</span>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Total Earnings</span>
+                    {analyticsLoading ? (
+                      <div className="flex items-center justify-center py-20">
+                        <div className="w-10 h-10 border-4 border-brand/20 border-t-brand rounded-full animate-spin" />
                       </div>
-                      <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
-                        <UsersIcon className="text-brand mb-4" size={32} />
-                        <span className="text-4xl font-serif font-bold text-ink">124</span>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Guests Hosted</span>
-                      </div>
-                      <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
-                        <Star className="text-brand mb-4" size={32} />
-                        <span className="text-4xl font-serif font-bold text-ink">4.92</span>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Avg Rating</span>
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white border border-brand-light rounded-[40px] p-10">
-                      <h4 className="serif text-2xl text-ink mb-8">Performance Overview</h4>
-                      <p className="text-stone-500 italic font-serif leading-relaxed h-32 flex items-center justify-center border border-dashed border-stone-200 rounded-3xl">
-                        Chart showing growth over time will appear here as you host more tables.
-                      </p>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 sm:grid-cols-4 gap-6 mb-12">
+                          <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
+                            <TrendingUp className="text-brand mb-4" size={32} />
+                            <span className="text-4xl font-serif font-bold text-ink">
+                              ${analytics?.totalEarnings.toLocaleString() ?? '0'}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Total Earnings</span>
+                          </div>
+                          <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
+                            <UsersIcon className="text-brand mb-4" size={32} />
+                            <span className="text-4xl font-serif font-bold text-ink">
+                              {analytics?.totalGuests ?? 0}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Guests Hosted</span>
+                          </div>
+                          <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
+                            <ChefHat className="text-brand mb-4" size={32} />
+                            <span className="text-4xl font-serif font-bold text-ink">
+                              {analytics?.completedDinners ?? 0}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Tables Hosted</span>
+                          </div>
+                          <div className="bg-brand/5 p-8 rounded-[32px] border border-brand-light flex flex-col items-center">
+                            <Star className="text-brand mb-4" size={32} />
+                            <span className="text-4xl font-serif font-bold text-ink">
+                              {analytics?.averageRating ? analytics.averageRating.toFixed(2) : '—'}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-stone-400 mt-2">Avg Rating</span>
+                          </div>
+                        </div>
+
+                        {analytics?.totalGuests === 0 && (
+                          <div className="py-16 text-center bg-stone-50 rounded-[40px] border border-dashed border-stone-200">
+                            <p className="text-stone-400 font-medium italic font-serif">Host your first table to start seeing insights here.</p>
+                          </div>
+                        )}
+                      </>
+                    )}
                  </motion.div>
                )}
              </AnimatePresence>

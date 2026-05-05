@@ -6,7 +6,7 @@ import { app } from '../lib/firebase';
 import { Booking } from '../types';
 import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, CheckCircle2, ChevronRight, MessageSquare, Star, CreditCard, BadgeCheck, AlertCircle, MessageCircle } from 'lucide-react';
+import { Calendar, CheckCircle2, ChevronRight, MessageSquare, Star, CreditCard, BadgeCheck, AlertCircle, MessageCircle, XCircle } from 'lucide-react';
 
 const StatusBadge = ({ status }: { status: Booking['status'] }) => {
   const styles = {
@@ -46,6 +46,7 @@ export const Bookings: React.FC = () => {
   const [hostBookings, setHostBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
+  const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
 
   const paymentResult = new URLSearchParams(location.search).get('payment');
 
@@ -93,6 +94,21 @@ export const Bookings: React.FC = () => {
     } catch (err) {
       console.error('Payment error:', err);
       setPayingBookingId(null);
+    }
+  };
+
+  const handleCancel = async (booking: Booking) => {
+    if (!window.confirm('Are you sure you want to cancel this booking?' + (booking.paymentStatus === 'paid' ? ' A refund will be initiated.' : ''))) return;
+    setCancellingBookingId(booking.id);
+    try {
+      const fns = getFunctions(app);
+      const cancel = httpsCallable<{ bookingId: string }, { success: boolean; refunded: boolean }>(fns, 'cancelBooking');
+      await cancel({ bookingId: booking.id });
+      await fetchData();
+    } catch (err) {
+      console.error('Cancel error:', err);
+    } finally {
+      setCancellingBookingId(null);
     }
   };
 
@@ -275,6 +291,14 @@ export const Bookings: React.FC = () => {
                         >
                           <MessageCircle size={13} />
                           Message Host
+                        </button>
+                        <button
+                          onClick={() => handleCancel(booking)}
+                          disabled={cancellingBookingId === booking.id}
+                          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-rose-400 hover:text-rose-600 transition-colors disabled:opacity-50"
+                        >
+                          <XCircle size={13} />
+                          {cancellingBookingId === booking.id ? 'Cancelling...' : 'Cancel Booking'}
                         </button>
                       </div>
                     )}

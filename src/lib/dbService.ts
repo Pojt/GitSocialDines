@@ -15,7 +15,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry, Conversation } from '../types';
+import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry, Conversation, HostAnalytics } from '../types';
 
 export const dbService = {
   async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
@@ -441,6 +441,48 @@ export const dbService = {
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+    }
+  },
+
+  async getHostAnalytics(hostId: string): Promise<HostAnalytics> {
+    try {
+      const dinnersSnap = await getDocs(
+        query(collection(db, 'dinners'), where('hostId', '==', hostId))
+      );
+      const priceMap: Record<string, number> = {};
+      let completedDinners = 0;
+      const now = Date.now();
+      dinnersSnap.docs.forEach(d => {
+        const data = d.data();
+        priceMap[d.id] = data.price as number;
+        if ((data.date as number) < now) completedDinners++;
+      });
+
+      const bookingsSnap = await getDocs(
+        query(collection(db, 'bookings'), where('hostId', '==', hostId), where('status', '==', 'confirmed'))
+      );
+      let totalGuests = 0;
+      let totalEarnings = 0;
+      bookingsSnap.docs.forEach(d => {
+        const data = d.data();
+        const count = (data.guestCount as number) || 1;
+        totalGuests += count;
+        totalEarnings += count * (priceMap[data.dinnerId] || 0);
+      });
+
+      const reviewsSnap = await getDocs(
+        query(collection(db, 'reviews'), where('targetId', '==', hostId))
+      );
+      let averageRating = 0;
+      if (reviewsSnap.size > 0) {
+        const sum = reviewsSnap.docs.reduce((acc, d) => acc + ((d.data().rating as number) || 0), 0);
+        averageRating = Math.round((sum / reviewsSnap.size) * 100) / 100;
+      }
+
+      return { totalEarnings, totalGuests, completedDinners, averageRating };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, 'analytics');
+      return { totalEarnings: 0, totalGuests: 0, completedDinners: 0, averageRating: 0 };
     }
   },
 
