@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { Dinner, Booking } from '../types';
+import { Dinner, Booking, WaitlistEntry } from '../types';
 import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -23,7 +23,7 @@ import {
 
 export const DinnerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { user, signIn } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [dinner, setDinner] = useState<Dinner | null>(null);
@@ -33,6 +33,9 @@ export const DinnerDetail: React.FC = () => {
   const [message, setMessage] = useState('');
   const [guestCount, setGuestCount] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [waitlistEntry, setWaitlistEntry] = useState<WaitlistEntry | null>(null);
+  const [waitlistLoading, setWaitlistLoading] = useState(false);
+  const [waitlistJoined, setWaitlistJoined] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -44,6 +47,11 @@ export const DinnerDetail: React.FC = () => {
     };
     fetch();
   }, [id]);
+
+  useEffect(() => {
+    if (!user || !id) return;
+    dbService.getWaitlistEntry(user.uid, id).then(setWaitlistEntry);
+  }, [user, id]);
 
   useEffect(() => {
     if (isModalOpen && user) {
@@ -93,6 +101,21 @@ export const DinnerDetail: React.FC = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleWaitlist = async () => {
+    if (!user) { navigate('/login', { state: { from: location } }); return; }
+    if (!dinner || isHost) return;
+    setWaitlistLoading(true);
+    if (waitlistEntry) {
+      await dbService.removeFromWaitlist(user.uid, dinner.id);
+      setWaitlistEntry(null);
+    } else {
+      await dbService.addToWaitlist(user.uid, dinner.id, dinner.hostId, 1);
+      setWaitlistEntry({ id: `${user.uid}_${dinner.id}`, userId: user.uid, dinnerId: dinner.id, hostId: dinner.hostId, guestCount: 1, joinedAt: Date.now() });
+      setWaitlistJoined(true);
+    }
+    setWaitlistLoading(false);
   };
 
   if (loading) return <div className="pt-32 text-center font-serif text-2xl">Preparing the table...</div>;
@@ -282,23 +305,41 @@ export const DinnerDetail: React.FC = () => {
                       <Link to="/bookings" className="text-[10px] font-bold text-stone-500 hover:text-brand transition-colors">Manage Requests</Link>
                     </div>
                  </div>
+               ) : dinner.guestsCount >= dinner.guestsMax ? (
+                 <div className="space-y-3">
+                   {waitlistJoined ? (
+                     <div className="w-full py-4 text-sm rounded-full font-bold uppercase tracking-widest text-center bg-emerald-50 text-emerald-600 border border-emerald-100">
+                       You're on the waitlist!
+                     </div>
+                   ) : (
+                     <button
+                       onClick={handleWaitlist}
+                       disabled={waitlistLoading}
+                       className={`w-full py-4 text-sm rounded-full font-bold uppercase tracking-widest transition-all ${
+                         waitlistEntry ? 'bg-stone-100 text-stone-500 hover:bg-rose-50 hover:text-rose-500' : 'olive-btn'
+                       }`}
+                     >
+                       {waitlistLoading ? '...' : waitlistEntry ? 'Leave Waitlist' : 'Join Waitlist'}
+                     </button>
+                   )}
+                   <p className="text-center text-[10px] text-stone-400 font-black uppercase tracking-[0.2em]">
+                     Fully booked · We'll notify you if a seat opens
+                   </p>
+                 </div>
                ) : (
-                 <button 
+                 <button
                    onClick={() => setIsModalOpen(true)}
-                   disabled={dinner.guestsCount >= dinner.guestsMax}
-                   className={`w-full py-4 text-sm rounded-full font-bold uppercase tracking-widest transition-all ${
-                     dinner.guestsCount >= dinner.guestsMax 
-                     ? 'bg-stone-100 text-stone-400 cursor-not-allowed' 
-                     : 'olive-btn'
-                   }`}
+                   className="w-full py-4 text-sm rounded-full font-bold uppercase tracking-widest olive-btn"
                  >
-                   {dinner.guestsCount >= dinner.guestsMax ? 'Fully Booked' : 'Request to join'}
+                   Request to join
                  </button>
                )}
-               
-               <p className="text-center text-[10px] text-stone-400 mt-6 font-black uppercase tracking-[0.2em]">
-                  Seats remaining: {dinner.guestsMax - dinner.guestsCount}
-               </p>
+
+               {dinner.guestsCount < dinner.guestsMax && (
+                 <p className="text-center text-[10px] text-stone-400 mt-6 font-black uppercase tracking-[0.2em]">
+                   Seats remaining: {dinner.guestsMax - dinner.guestsCount}
+                 </p>
+               )}
             </div>
           </div>
         </div>
@@ -319,8 +360,19 @@ export const DinnerDetail: React.FC = () => {
                 Requests
               </Link>
             </div>
+          ) : dinner.guestsCount >= dinner.guestsMax ? (
+            <button
+              onClick={handleWaitlist}
+              disabled={waitlistLoading}
+              className={`px-8 py-3 text-xs rounded-full font-bold uppercase tracking-widest transition-all ${
+                waitlistJoined ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' :
+                waitlistEntry ? 'bg-stone-100 text-stone-500' : 'olive-btn'
+              }`}
+            >
+              {waitlistJoined ? 'On Waitlist!' : waitlistLoading ? '...' : waitlistEntry ? 'Leave Waitlist' : 'Join Waitlist'}
+            </button>
           ) : (
-            <button 
+            <button
               onClick={() => setIsModalOpen(true)}
               className="olive-btn px-8 py-3 text-xs"
             >

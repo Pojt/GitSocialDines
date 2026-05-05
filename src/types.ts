@@ -1,3 +1,12 @@
+export interface WaitlistEntry {
+  id: string; // userId_dinnerId
+  userId: string;
+  dinnerId: string;
+  hostId: string;
+  guestCount: number;
+  joinedAt: number;
+}
+
 export interface AppNotification {
   id: string;
   type: 'booking_request' | 'booking_confirmed' | 'booking_rejected' | 'booking_cancelled';

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { dbService } from '../lib/dbService';
-import { UserProfile, Dinner } from '../types';
+import { UserProfile, Dinner, WaitlistEntry } from '../types';
 import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { MapPin, Calendar, Heart, ShieldCheck, Quote, Edit3, Save, X, Camera, History, Bookmark, BarChart3, TrendingUp, Users as UsersIcon, DollarSign as DollarIcon, Star, ChefHat } from 'lucide-react';
+import { MapPin, Calendar, Heart, ShieldCheck, Quote, Edit3, Save, X, Camera, History, Bookmark, BarChart3, TrendingUp, Users as UsersIcon, Star, ChefHat, Clock } from 'lucide-react';
 import { LocationInput } from '../components/LocationInput';
 import { DinnerCard } from '../components/DinnerCard';
 
@@ -14,10 +14,12 @@ export const Profile: React.FC = () => {
   const [attendedDinners, setAttendedDinners] = useState<Dinner[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'history' | 'favorites' | 'hosting' | 'analytics'>('history');
+  const [activeTab, setActiveTab] = useState<'history' | 'favorites' | 'waitlist' | 'hosting' | 'analytics'>('history');
   const [favoriteDinners, setFavoriteDinners] = useState<Dinner[]>([]);
   const [hostedDinners, setHostedDinners] = useState<Dinner[]>([]);
   const [pendingBookings, setPendingBookings] = useState<any[]>([]);
+  const [waitlistEntries, setWaitlistEntries] = useState<WaitlistEntry[]>([]);
+  const [waitlistDinners, setWaitlistDinners] = useState<Dinner[]>([]);
   const [editData, setEditData] = useState({
     displayName: '',
     bio: '',
@@ -68,6 +70,12 @@ export const Profile: React.FC = () => {
       // Fetch pending bookings for host
       const allHostBookings = await dbService.getHostBookings(user.uid);
       setPendingBookings(allHostBookings.filter(b => b.status === 'pending'));
+
+      // Fetch waitlist entries
+      const entries = await dbService.getUserWaitlist(user.uid);
+      setWaitlistEntries(entries);
+      const dinners = await Promise.all(entries.map(e => dbService.getDinner(e.dinnerId)));
+      setWaitlistDinners(dinners.filter(Boolean) as Dinner[]);
 
       setLoading(false);
     };
@@ -338,7 +346,20 @@ export const Profile: React.FC = () => {
                   Saved for Later
                   {activeTab === 'favorites' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-1 bg-brand rounded-t-full" />}
                 </button>
-                <button 
+                <button
+                  onClick={() => setActiveTab('waitlist')}
+                  className={`flex items-center gap-2 px-8 py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === 'waitlist' ? 'text-brand' : 'text-stone-400 hover:text-stone-600'}`}
+                >
+                  <Clock size={16} />
+                  Waitlist
+                  {waitlistEntries.length > 0 && (
+                    <span className="ml-1 w-4 h-4 bg-brand text-white rounded-full text-[8px] font-black flex items-center justify-center">
+                      {waitlistEntries.length}
+                    </span>
+                  )}
+                  {activeTab === 'waitlist' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-1 bg-brand rounded-t-full" />}
+                </button>
+                <button
                   onClick={() => setActiveTab('hosting')}
                   className={`flex items-center gap-2 px-8 py-4 text-[10px] font-black uppercase tracking-widest transition-all relative ${activeTab === 'hosting' ? 'text-brand' : 'text-stone-400 hover:text-stone-600'}`}
                 >
@@ -395,6 +416,52 @@ export const Profile: React.FC = () => {
                      <div className="py-20 text-center bg-stone-50 rounded-[40px] border border-dashed border-stone-200">
                         <p className="text-stone-400 font-medium italic font-serif">A wishlist for hungry souls. Save tables you'd love to join.</p>
                         <button onClick={() => navigate('/explore')} className="mt-6 text-[10px] font-black uppercase tracking-widest text-brand">Explore tables</button>
+                     </div>
+                   )}
+                 </motion.div>
+               )}
+
+               {activeTab === 'waitlist' && (
+                 <motion.div
+                   key="waitlist"
+                   initial={{ opacity: 0, x: 20 }}
+                   animate={{ opacity: 1, x: 0 }}
+                   exit={{ opacity: 0, x: -20 }}
+                   className="space-y-6"
+                 >
+                   {waitlistDinners.length > 0 ? (
+                     <>
+                       <p className="text-xs text-stone-400 font-medium italic">You'll be notified when a seat opens at these tables.</p>
+                       <div className="space-y-4">
+                         {waitlistDinners.map((dinner, i) => (
+                           <div key={dinner.id} className="bg-white border border-brand-light rounded-[28px] p-5 flex items-center gap-5">
+                             <img src={dinner.images[0]} className="w-16 h-16 rounded-2xl object-cover flex-shrink-0" alt={dinner.title} />
+                             <div className="flex-1 min-w-0">
+                               <p className="font-bold text-ink truncate">{dinner.title}</p>
+                               <p className="text-[10px] text-stone-400 font-black uppercase tracking-widest mt-1">
+                                 {new Date(dinner.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                               </p>
+                             </div>
+                             <button
+                               onClick={async () => {
+                                 if (!user) return;
+                                 await dbService.removeFromWaitlist(user.uid, dinner.id);
+                                 setWaitlistEntries(prev => prev.filter(e => e.dinnerId !== dinner.id));
+                                 setWaitlistDinners(prev => prev.filter(d => d.id !== dinner.id));
+                               }}
+                               className="text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-rose-500 transition-colors flex-shrink-0"
+                             >
+                               Leave
+                             </button>
+                           </div>
+                         ))}
+                       </div>
+                     </>
+                   ) : (
+                     <div className="py-20 text-center bg-stone-50 rounded-[40px] border border-dashed border-stone-200">
+                       <Clock className="mx-auto text-stone-200 mb-3" size={32} />
+                       <p className="text-stone-400 font-medium italic font-serif">No waitlists yet. Join a sold-out dinner to get notified when a seat opens.</p>
+                       <button onClick={() => navigate('/explore')} className="mt-6 text-[10px] font-black uppercase tracking-widest text-brand">Explore tables</button>
                      </div>
                    )}
                  </motion.div>

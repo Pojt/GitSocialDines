@@ -8,13 +8,14 @@ import {
   addDoc,
   updateDoc,
   setDoc,
+  deleteDoc,
   serverTimestamp,
   orderBy,
   limit,
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { Dinner, UserProfile, Booking, Review, AppNotification } from '../types';
+import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry } from '../types';
 
 export const dbService = {
   async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
@@ -318,6 +319,45 @@ export const dbService = {
     }
   },
 
+  async addToWaitlist(userId: string, dinnerId: string, hostId: string, guestCount: number) {
+    try {
+      await setDoc(doc(db, 'waitlist', `${userId}_${dinnerId}`), {
+        userId, dinnerId, hostId, guestCount, joinedAt: Date.now()
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'waitlist');
+    }
+  },
+
+  async removeFromWaitlist(userId: string, dinnerId: string) {
+    try {
+      await deleteDoc(doc(db, 'waitlist', `${userId}_${dinnerId}`));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, 'waitlist');
+    }
+  },
+
+  async getWaitlistEntry(userId: string, dinnerId: string): Promise<WaitlistEntry | null> {
+    try {
+      const snap = await getDoc(doc(db, 'waitlist', `${userId}_${dinnerId}`));
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...snap.data() } as WaitlistEntry;
+    } catch (error) {
+      return null;
+    }
+  },
+
+  async getUserWaitlist(userId: string): Promise<WaitlistEntry[]> {
+    try {
+      const q = query(collection(db, 'waitlist'), where('userId', '==', userId), orderBy('joinedAt', 'desc'));
+      const snap = await getDocs(q);
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }) as WaitlistEntry);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'waitlist');
+      return [];
+    }
+  },
+
   async getFavorites(dinnerIds: string[]) {
     try {
       if (!dinnerIds || dinnerIds.length === 0) return [];
@@ -390,6 +430,32 @@ export const dbService = {
       }
 
       await batch.commit();
+
+      // After a confirmed booking is cancelled, notify the first person on the waitlist
+      if (status === 'cancelled' && existingBooking.status === 'confirmed') {
+        const waitlistQ = query(
+          collection(db, 'waitlist'),
+          where('dinnerId', '==', dinnerId),
+          orderBy('joinedAt', 'asc'),
+          limit(1)
+        );
+        const waitlistSnap = await getDocs(waitlistQ);
+        if (!waitlistSnap.empty) {
+          const first = waitlistSnap.docs[0];
+          const entry = first.data() as WaitlistEntry;
+          const dinner = await this.getDinner(dinnerId);
+          if (dinner) {
+            await Promise.all([
+              this.createNotification(entry.userId, {
+                type: 'booking_confirmed',
+                message: `A seat just opened at "${dinner.title}" — you're first on the waitlist!`,
+                link: `/dinner/${dinnerId}`
+              }),
+              deleteDoc(first.ref)
+            ]);
+          }
+        }
+      }
 
       if (status === 'confirmed' || status === 'rejected') {
         const [guest, dinner] = await Promise.all([

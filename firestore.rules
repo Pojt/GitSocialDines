@@ -111,6 +111,17 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /waitlist/{entryId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || resource.data.hostId == request.auth.uid
+      );
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || resource.data.hostId == request.auth.uid
+      );
+      allow update: if false;
+    }
+
     match /notifications/{userId}/items/{notifId} {
       allow read, update: if isOwner(userId);
       allow create: if isSignedIn(); // any auth user can send a notification to another user
