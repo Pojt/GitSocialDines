@@ -59,9 +59,7 @@ service cloud.firestore {
         // Action: Host Edit
         (isOwner(existing().hostId) && isValidDinner(incoming()) && incoming().hostId == existing().hostId) ||
         // Action: Guest Intake (Atomic increment check)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['guestsCount']) && incoming().guestsCount == existing().guestsCount + 1) ||
-        // Action: Booking cancellation (decrement)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['guestsCount']) && incoming().guestsCount < existing().guestsCount && incoming().guestsCount >= 0)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['guestsCount']) && incoming().guestsCount == existing().guestsCount + 1)
       );
       allow delete: if isSignedIn() && isOwner(existing().hostId);
     }
@@ -102,13 +100,7 @@ service cloud.firestore {
 
       allow read: if true;
       allow create: if isSignedIn() && isValidReview(incoming()) &&
-        exists(/databases/$(database)/documents/confirmedAttendances/$(request.auth.uid + "_" + incoming().dinnerId));
-    }
-
-    match /confirmedAttendances/{attendanceId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+        get(/databases/$(database)/documents/bookings/$(request.auth.uid + "_" + incoming().dinnerId)).data.status == 'confirmed';
     }
 
     match /mail/{mailId} {
