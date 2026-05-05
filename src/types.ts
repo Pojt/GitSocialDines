@@ -60,6 +60,9 @@ export interface Booking {
   message: string;
   guestCount: number;
   createdAt: number;
+  paymentStatus?: 'unpaid' | 'awaiting_payment' | 'paid' | 'failed';
+  stripeSessionId?: string;
+  paidAt?: number;
   dinner?: Dinner;
   guest?: UserProfile;
 }

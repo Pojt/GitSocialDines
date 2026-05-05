@@ -128,6 +128,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /payments/{paymentId} {
+      allow read: if isSignedIn() && resource.data.guestId == request.auth.uid;
+      allow write: if false; // Admin SDK (Cloud Functions) only
+    }
+
     match /mail/{mailId} {
       allow create: if isSignedIn(); // Allow authenticated users to queue system emails
       allow read, update, delete: if false; // Only system/admin should process
