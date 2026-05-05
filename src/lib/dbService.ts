@@ -14,7 +14,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { Dinner, UserProfile, Booking, Review } from '../types';
+import { Dinner, UserProfile, Booking, Review, AppNotification } from '../types';
 
 export const dbService = {
   async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
@@ -206,6 +206,19 @@ export const dbService = {
             </div>`
           );
         }
+
+        await Promise.all([
+          this.createNotification(booking.guestId, {
+            type: 'booking_request',
+            message: `Your request to join "${dinner.title}" is pending host approval.`,
+            link: '/bookings'
+          }),
+          this.createNotification(booking.hostId, {
+            type: 'booking_request',
+            message: `${guest.displayName} wants to join your table "${dinner.title}".`,
+            link: '/bookings'
+          })
+        ]);
       }
 
       return docRef;
@@ -267,6 +280,41 @@ export const dbService = {
       });
     } catch (error) {
       console.error('Failed to queue email:', error);
+    }
+  },
+
+  async createNotification(userId: string, notif: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>) {
+    try {
+      await addDoc(collection(db, 'notifications', userId, 'items'), {
+        ...notif,
+        isRead: false,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      console.error('Failed to create notification:', error);
+    }
+  },
+
+  async markNotificationRead(userId: string, notifId: string) {
+    try {
+      await updateDoc(doc(db, 'notifications', userId, 'items', notifId), { isRead: true });
+    } catch (error) {
+      console.error('Failed to mark notification read:', error);
+    }
+  },
+
+  async markAllNotificationsRead(userId: string) {
+    try {
+      const q = query(
+        collection(db, 'notifications', userId, 'items'),
+        where('isRead', '==', false)
+      );
+      const snap = await getDocs(q);
+      const batch = writeBatch(db);
+      snap.docs.forEach(d => batch.update(d.ref, { isRead: true }));
+      await batch.commit();
+    } catch (error) {
+      console.error('Failed to mark all notifications read:', error);
     }
   },
 
@@ -343,27 +391,36 @@ export const dbService = {
 
       await batch.commit();
 
-      // Send confirmation email to guest
-      if (status === 'confirmed') {
+      if (status === 'confirmed' || status === 'rejected') {
         const [guest, dinner] = await Promise.all([
           this.getUserProfile(existingBooking.guestId),
           this.getDinner(dinnerId)
         ]);
 
-        if (guest?.email && dinner) {
-          await this.queueEmail(
-            [guest.email],
-            `Booking Confirmed! ${dinner.title}`,
-            `Great news! Your booking for ${dinner.title} has been confirmed.`,
-            `<div style="font-family: sans-serif; color: #1c1917;">
-              <h2 style="color: #61694b;">You're in!</h2>
-              <p>Hi ${guest.displayName},</p>
-              <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
-              <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
-                <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
-              </div>
-            </div>`
-          );
+        if (guest && dinner) {
+          if (status === 'confirmed' && guest.email) {
+            await this.queueEmail(
+              [guest.email],
+              `Booking Confirmed! ${dinner.title}`,
+              `Great news! Your booking for ${dinner.title} has been confirmed.`,
+              `<div style="font-family: sans-serif; color: #1c1917;">
+                <h2 style="color: #61694b;">You're in!</h2>
+                <p>Hi ${guest.displayName},</p>
+                <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
+                <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
+                  <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
+                </div>
+              </div>`
+            );
+          }
+
+          await this.createNotification(existingBooking.guestId, {
+            type: status === 'confirmed' ? 'booking_confirmed' : 'booking_rejected',
+            message: status === 'confirmed'
+              ? `Your booking for "${dinner.title}" has been confirmed!`
+              : `Your booking request for "${dinner.title}" was not accepted.`,
+            link: '/bookings'
+          });
         }
       }
 

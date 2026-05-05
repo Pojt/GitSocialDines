@@ -111,6 +111,12 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /notifications/{userId}/items/{notifId} {
+      allow read, update: if isOwner(userId);
+      allow create: if isSignedIn(); // any auth user can send a notification to another user
+      allow delete: if false;
+    }
+
     match /mail/{mailId} {
       allow create: if isSignedIn(); // Allow authenticated users to queue system emails
       allow read, update, delete: if false; // Only system/admin should process

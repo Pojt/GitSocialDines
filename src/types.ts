@@ -1,4 +1,13 @@
-export interface UserProfile {
+export interface AppNotification {
+  id: string;
+  type: 'booking_request' | 'booking_confirmed' | 'booking_rejected' | 'booking_cancelled';
+  message: string;
+  link: string;
+  isRead: boolean;
+  createdAt: number;
+}
+
+
   id: string;
   displayName: string;
   photoURL: string;
