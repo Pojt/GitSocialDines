@@ -29,12 +29,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (user) {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
-            setProfile({ id: user.uid, ...userDoc.data() } as UserProfile);
+            const profileData = userDoc.data();
+            // Backfill email if missing (users created before email was stored)
+            if (!profileData.email && user.email) {
+              await import('firebase/firestore').then(({ updateDoc }) =>
+                updateDoc(doc(db, 'users', user.uid), { email: user.email })
+              );
+              profileData.email = user.email;
+            }
+            setProfile({ id: user.uid, ...profileData } as UserProfile);
           } else {
             // Create a basic profile if it doesn't exist
             const newProfile = {
               displayName: user.displayName || 'Anonymous Guest',
               photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
+              email: user.email || '',
               isVerified: false,
               interests: [],
               city: 'Global Citizen',

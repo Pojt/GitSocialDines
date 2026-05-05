@@ -1,12 +1,13 @@
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  getDoc, 
-  doc, 
-  addDoc, 
-  updateDoc, 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  getDoc,
+  doc,
+  addDoc,
+  updateDoc,
+  setDoc,
   serverTimestamp,
   orderBy,
   limit,
@@ -171,38 +172,40 @@ export const dbService = {
       ]);
 
       if (guest && host && dinner) {
-        // Notify Guest
-        await this.queueEmail(
-          [guest.id],
-          `Booking Request Sent: ${dinner.title}`,
-          `Hi ${guest.displayName}, your request to join ${dinner.title} for ${booking.guestCount} guests has been sent.`,
-          `<div style="font-family: sans-serif; color: #1c1917;">
-            <h2 style="color: #61694b;">Booking Request Sent!</h2>
-            <p>Hi ${guest.displayName},</p>
-            <p>Your request to join <strong>${dinner.title}</strong> has been sent to the host.</p>
-            <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
-              <p><strong>Table:</strong> ${dinner.title}</p>
-              <p><strong>Guests:</strong> ${booking.guestCount}</p>
-              <p><strong>Status:</strong> Pending Host Approval</p>
-            </div>
-          </div>`
-        );
+        if (guest.email) {
+          await this.queueEmail(
+            [guest.email],
+            `Booking Request Sent: ${dinner.title}`,
+            `Hi ${guest.displayName}, your request to join ${dinner.title} for ${booking.guestCount} guests has been sent.`,
+            `<div style="font-family: sans-serif; color: #1c1917;">
+              <h2 style="color: #61694b;">Booking Request Sent!</h2>
+              <p>Hi ${guest.displayName},</p>
+              <p>Your request to join <strong>${dinner.title}</strong> has been sent to the host.</p>
+              <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
+                <p><strong>Table:</strong> ${dinner.title}</p>
+                <p><strong>Guests:</strong> ${booking.guestCount}</p>
+                <p><strong>Status:</strong> Pending Host Approval</p>
+              </div>
+            </div>`
+          );
+        }
 
-        // Notify Host
-        await this.queueEmail(
-          [host.id],
-          `New Booking Request: ${dinner.title}`,
-          `Hi ${host.displayName}, ${guest.displayName} wants to join your table ${dinner.title}.`,
-          `<div style="font-family: sans-serif; color: #1c1917;">
-            <h2 style="color: #61694b;">New Seat Request!</h2>
-            <p>Hi ${host.displayName},</p>
-            <p><strong>${guest.displayName}</strong> would like to join your table <strong>${dinner.title}</strong>.</p>
-            <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
-              <p><strong>Message:</strong> "${booking.message}"</p>
-              <p><strong>Guests:</strong> ${booking.guestCount}</p>
-            </div>
-          </div>`
-        );
+        if (host.email) {
+          await this.queueEmail(
+            [host.email],
+            `New Booking Request: ${dinner.title}`,
+            `Hi ${host.displayName}, ${guest.displayName} wants to join your table ${dinner.title}.`,
+            `<div style="font-family: sans-serif; color: #1c1917;">
+              <h2 style="color: #61694b;">New Seat Request!</h2>
+              <p>Hi ${host.displayName},</p>
+              <p><strong>${guest.displayName}</strong> would like to join your table <strong>${dinner.title}</strong>.</p>
+              <div style="background: #fdfcf6; padding: 20px; border-radius: 12px; border: 1px solid #e7e5e4;">
+                <p><strong>Message:</strong> "${booking.message}"</p>
+                <p><strong>Guests:</strong> ${booking.guestCount}</p>
+              </div>
+            </div>`
+          );
+        }
       }
 
       return docRef;
@@ -311,30 +314,45 @@ export const dbService = {
 
   async updateBookingStatus(bookingId: string, status: Booking['status'], dinnerId: string, newGuestCount?: number) {
     try {
-      const batch = writeBatch(db);
-      
       const bookingRef = doc(db, 'bookings', bookingId);
+      const existingBookingSnap = await getDoc(bookingRef);
+      if (!existingBookingSnap.exists()) return false;
+      const existingBooking = existingBookingSnap.data() as Booking;
+
+      const batch = writeBatch(db);
       batch.update(bookingRef, { status });
 
       if (status === 'confirmed' && newGuestCount !== undefined) {
         const dinnerRef = doc(db, 'dinners', dinnerId);
         batch.update(dinnerRef, { guestsCount: newGuestCount });
+        // Write confirmedAttendance so the guest can leave a review
+        const attendanceRef = doc(db, 'confirmedAttendances', `${existingBooking.guestId}_${dinnerId}`);
+        batch.set(attendanceRef, { guestId: existingBooking.guestId, dinnerId, confirmedAt: Date.now() });
+      }
+
+      if (status === 'cancelled' && existingBooking.status === 'confirmed') {
+        const dinnerSnap = await getDoc(doc(db, 'dinners', dinnerId));
+        if (dinnerSnap.exists()) {
+          const currentCount = (dinnerSnap.data().guestsCount as number) || 0;
+          const decrement = existingBooking.guestCount || 1;
+          batch.update(doc(db, 'dinners', dinnerId), {
+            guestsCount: Math.max(0, currentCount - decrement)
+          });
+        }
       }
 
       await batch.commit();
 
-      // Send status update email to guest
-      const bookingDoc = await getDoc(bookingRef);
-      if (bookingDoc.exists()) {
-        const bookingData = bookingDoc.data() as Booking;
+      // Send confirmation email to guest
+      if (status === 'confirmed') {
         const [guest, dinner] = await Promise.all([
-          this.getUserProfile(bookingData.guestId),
+          this.getUserProfile(existingBooking.guestId),
           this.getDinner(dinnerId)
         ]);
 
-        if (guest && dinner && status === 'confirmed') {
+        if (guest?.email && dinner) {
           await this.queueEmail(
-            [guest.id],
+            [guest.email],
             `Booking Confirmed! ${dinner.title}`,
             `Great news! Your booking for ${dinner.title} has been confirmed.`,
             `<div style="font-family: sans-serif; color: #1c1917;">
