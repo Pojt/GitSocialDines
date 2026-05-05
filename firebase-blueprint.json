@@ -1,0 +1,116 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "bio": { "type": "string" },
+        "city": { "type": "string" },
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "dietaryPreferences": { "type": "array", "items": { "type": "string" } },
+        "favorites": { "type": "array", "items": { "type": "string" } },
+        "isVerified": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["displayName", "photoURL", "isVerified"]
+    },
+    "Dinner": {
+      "title": "Dinner",
+      "description": "A hosted dinner event",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "cuisine": { "type": "string" },
+        "price": { "type": "number" },
+        "currency": { "type": "string" },
+        "date": { "type": "number" },
+        "guestsMax": { "type": "number" },
+        "guestsCount": { "type": "number" },
+        "hostId": { "type": "string" },
+        "vibe": { "type": "string" },
+        "soloFriendly": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "dietaryOptions": { "type": "array", "items": { "type": "string" } },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "cuisine", "price", "date", "hostId", "guestsMax", "guestsCount"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "A seat request for a dinner",
+      "type": "object",
+      "properties": {
+        "dinnerId": { "type": "string" },
+        "guestId": { "type": "string" },
+        "hostId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "rejected", "cancelled"] },
+        "message": { "type": "string" },
+        "guestCount": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["dinnerId", "guestId", "hostId", "status", "guestCount"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Guest review for a host/dinner",
+      "type": "object",
+      "properties": {
+        "rating": { "type": "number" },
+        "content": { "type": "string" },
+        "mood": { "type": "string" },
+        "authorId": { "type": "string" },
+        "targetId": { "type": "string" },
+        "dinnerId": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["rating", "content", "authorId", "targetId", "dinnerId"]
+    },
+    "Email": {
+      "title": "Email",
+      "description": "Email queue for Trigger Email extension",
+      "type": "object",
+      "properties": {
+        "to": { "type": "array", "items": { "type": "string" } },
+        "message": {
+          "type": "object",
+          "properties": {
+            "subject": { "type": "string" },
+            "text": { "type": "string" },
+            "html": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["to", "message"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "dinners/{dinnerId}": {
+      "schema": "Dinner",
+      "description": "Hosted dinner events"
+    },
+    "bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Dinner seat requests"
+    },
+    "reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Post-dinner reviews"
+    },
+    "mail/{mailId}": {
+      "schema": "Email",
+      "description": "Outbound email queue"
+    }
+  }
+}

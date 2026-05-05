@@ -1,0 +1,6 @@
+{
+  "name": "Social Dine",
+  "description": "A marketplace for intimate home dining experiences where guests share a meal and conversation with their host.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": []
+}
