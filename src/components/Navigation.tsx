@@ -5,7 +5,7 @@ import { useAuth } from '../AuthContext';
 import { motion } from 'motion/react';
 
 export const Navigation: React.FC = () => {
-  const { user, profile, signIn, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const location = useLocation();
 
   const isActive = (path: string) => location.pathname === path;

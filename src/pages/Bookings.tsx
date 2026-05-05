@@ -255,19 +255,19 @@ export const Bookings: React.FC = () => {
                    </p>
 
                    <div className="bg-[#F2F1EA] rounded-3xl p-6 border border-brand-light">
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-brand mb-4">Next Steps & Payment</h4>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-brand mb-4">Next Steps</h4>
                       <ul className="space-y-3">
                          <li className="flex items-start space-x-3 text-xs text-stone-600 font-medium">
                             <span className="w-4 h-4 rounded-full bg-brand/10 text-brand flex items-center justify-center text-[8px] mt-0.5">1</span>
-                            <span>A secure payment link will be sent to your email 24 hours before the event.</span>
+                            <span>The host will be in touch before the event with the final address and any details you need.</span>
                          </li>
                          <li className="flex items-start space-x-3 text-xs text-stone-600 font-medium">
                             <span className="w-4 h-4 rounded-full bg-brand/10 text-brand flex items-center justify-center text-[8px] mt-0.5">2</span>
-                            <span>The exact address and host contact details will be revealed once payment is complete.</span>
+                            <span>Check the dinner listing for cuisine, dietary options, and what to expect on the night.</span>
                          </li>
                          <li className="flex items-start space-x-3 text-xs text-stone-600 font-medium">
                             <span className="w-4 h-4 rounded-full bg-brand/10 text-brand flex items-center justify-center text-[8px] mt-0.5">3</span>
-                            <span>Review the host's story and get ready for a lively discussion!</span>
+                            <span>Review the host's story and come ready for great food and conversation!</span>
                          </li>
                       </ul>
                    </div>
