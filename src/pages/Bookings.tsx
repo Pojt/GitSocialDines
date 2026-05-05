@@ -6,7 +6,7 @@ import { app } from '../lib/firebase';
 import { Booking } from '../types';
 import { useAuth } from '../AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { Calendar, CheckCircle2, ChevronRight, MessageSquare, Star, CreditCard, BadgeCheck, AlertCircle } from 'lucide-react';
+import { Calendar, CheckCircle2, ChevronRight, MessageSquare, Star, CreditCard, BadgeCheck, AlertCircle, MessageCircle } from 'lucide-react';
 
 const StatusBadge = ({ status }: { status: Booking['status'] }) => {
   const styles = {
@@ -94,6 +94,14 @@ export const Bookings: React.FC = () => {
       console.error('Payment error:', err);
       setPayingBookingId(null);
     }
+  };
+
+  const handleOpenMessage = async (booking: Booking) => {
+    if (!user || !booking.dinner) return;
+    const conversationId = await dbService.getOrCreateConversation(
+      booking.hostId, booking.guestId, booking.dinnerId, booking.dinner.title
+    );
+    navigate(`/messages/${conversationId}`);
   };
 
   const filteredBookings = activeTab === 'Hosting' 
@@ -215,17 +223,30 @@ export const Bookings: React.FC = () => {
                   </div>
 
                   <div className="flex flex-col items-end gap-3 w-full sm:w-auto">
-                    {activeTab === 'Hosting' && booking.status === 'pending' && (
-                       <div className="flex gap-2">
-                         <button 
-                           onClick={() => handleUpdateStatus(booking, 'confirmed')}
-                           className="bg-brand text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
-                         >Accept</button>
-                         <button 
-                           onClick={() => handleUpdateStatus(booking, 'rejected')}
-                           className="bg-stone-100 text-stone-500 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
-                         >Decline</button>
-                       </div>
+                    {activeTab === 'Hosting' && (
+                      <div className="flex flex-col gap-2 items-end">
+                        {booking.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleUpdateStatus(booking, 'confirmed')}
+                              className="bg-brand text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
+                            >Accept</button>
+                            <button
+                              onClick={() => handleUpdateStatus(booking, 'rejected')}
+                              className="bg-stone-100 text-stone-500 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest"
+                            >Decline</button>
+                          </div>
+                        )}
+                        {booking.status === 'confirmed' && (
+                          <button
+                            onClick={() => handleOpenMessage(booking)}
+                            className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-brand transition-colors"
+                          >
+                            <MessageCircle size={13} />
+                            Message Guest
+                          </button>
+                        )}
+                      </div>
                     )}
 
                     {activeTab === 'Upcoming' && (
@@ -248,6 +269,13 @@ export const Bookings: React.FC = () => {
                             Next Steps
                           </button>
                         )}
+                        <button
+                          onClick={() => handleOpenMessage(booking)}
+                          className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-brand transition-colors"
+                        >
+                          <MessageCircle size={13} />
+                          Message Host
+                        </button>
                       </div>
                     )}
 

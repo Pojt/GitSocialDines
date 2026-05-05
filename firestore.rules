@@ -111,6 +111,20 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /conversations/{conversationId} {
+      allow read, update: if isSignedIn() && resource.data.participants.hasAny([request.auth.uid]);
+      allow create: if isSignedIn() && incoming().participants.hasAny([request.auth.uid]);
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() &&
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
+        allow create: if isSignedIn() &&
+          incoming().senderId == request.auth.uid &&
+          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
+        allow update, delete: if false;
+      }
+    }
+
     match /waitlist/{entryId} {
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid || resource.data.hostId == request.auth.uid

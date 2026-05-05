@@ -9,10 +9,29 @@ export interface WaitlistEntry {
 
 export interface AppNotification {
   id: string;
-  type: 'booking_request' | 'booking_confirmed' | 'booking_rejected' | 'booking_cancelled';
+  type: 'booking_request' | 'booking_confirmed' | 'booking_rejected' | 'booking_cancelled' | 'new_message';
   message: string;
   link: string;
   isRead: boolean;
+  createdAt: number;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  text: string;
+  createdAt: number;
+}
+
+export interface Conversation {
+  id: string;
+  hostId: string;
+  guestId: string;
+  dinnerId: string;
+  dinnerTitle: string;
+  participants: string[];
+  lastMessage: string;
+  lastMessageAt: number;
   createdAt: number;
 }
 

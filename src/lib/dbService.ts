@@ -15,7 +15,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from './firebase';
-import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry } from '../types';
+import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry, Conversation } from '../types';
 
 export const dbService = {
   async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
@@ -316,6 +316,50 @@ export const dbService = {
       await batch.commit();
     } catch (error) {
       console.error('Failed to mark all notifications read:', error);
+    }
+  },
+
+  async getOrCreateConversation(hostId: string, guestId: string, dinnerId: string, dinnerTitle: string): Promise<string> {
+    const conversationId = `${hostId}_${guestId}_${dinnerId}`;
+    const ref = doc(db, 'conversations', conversationId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        hostId, guestId, dinnerId, dinnerTitle,
+        participants: [hostId, guestId],
+        lastMessage: '',
+        lastMessageAt: Date.now(),
+        createdAt: Date.now()
+      } as Omit<Conversation, 'id'>);
+    }
+    return conversationId;
+  },
+
+  async sendMessage(conversationId: string, senderId: string, text: string) {
+    try {
+      const conversationRef = doc(db, 'conversations', conversationId);
+      await Promise.all([
+        addDoc(collection(db, 'conversations', conversationId, 'messages'), {
+          senderId,
+          text,
+          createdAt: Date.now()
+        }),
+        updateDoc(conversationRef, { lastMessage: text, lastMessageAt: Date.now() })
+      ]);
+
+      // Notify the other participant
+      const convSnap = await getDoc(conversationRef);
+      if (convSnap.exists()) {
+        const conv = convSnap.data() as Conversation;
+        const recipientId = senderId === conv.hostId ? conv.guestId : conv.hostId;
+        await this.createNotification(recipientId, {
+          type: 'new_message',
+          message: `New message about "${conv.dinnerTitle}"`,
+          link: `/messages/${conversationId}`
+        });
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `conversations/${conversationId}/messages`);
     }
   },
 

@@ -267,6 +267,20 @@ export const DinnerDetail: React.FC = () => {
                        <Link to={`/host/${dinner.hostId}`} className="text-xs font-black text-brand uppercase tracking-[0.2em] flex items-center hover:opacity-70 transition-opacity">
                          View Host Story <ChevronRight size={14} className="ml-1" />
                        </Link>
+                       {user && !isHost && (
+                         <button
+                           onClick={async () => {
+                             const conversationId = await dbService.getOrCreateConversation(
+                               dinner.hostId, user.uid, dinner.id, dinner.title
+                             );
+                             navigate(`/messages/${conversationId}`);
+                           }}
+                           className="text-xs font-black text-stone-500 uppercase tracking-[0.2em] flex items-center gap-1 hover:text-brand transition-colors"
+                         >
+                           <MessageSquare size={14} />
+                           Message Host
+                         </button>
+                       )}
                     </div>
                   </div>
                </div>

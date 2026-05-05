@@ -16,6 +16,7 @@ import { Bookings } from './pages/Bookings';
 import { ReviewPage } from './pages/ReviewPage';
 import { Login } from './pages/Login';
 import { CreateDinner } from './pages/CreateDinner';
+import { Messages } from './pages/Messages';
 import { seedDB } from './lib/seedData';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
               <Route path="/host/:id" element={<HostProfile />} />
               <Route path="/host/create" element={<CreateDinner />} />
               <Route path="/host/edit/:id" element={<CreateDinner />} />
+              <Route path="/messages/:conversationId" element={<Messages />} />
             </Routes>
           </main>
         </div>
