@@ -18,9 +18,9 @@ import { db, handleFirestoreError, OperationType } from './firebase';
 import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry, Conversation, HostAnalytics } from '../types';
 
 export const dbService = {
-  async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
+  async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }, pageSize = 48) {
     const dinnersRef = collection(db, 'dinners');
-    let q = query(dinnersRef, orderBy('date', 'asc'));
+    let q = query(dinnersRef, orderBy('date', 'asc'), limit(pageSize));
 
     if (filters?.cuisine) {
       q = query(q, where('cuisine', '==', filters.cuisine));
@@ -31,42 +31,32 @@ export const dbService = {
 
     try {
       const querySnapshot = await getDocs(q);
-      const dinners: Dinner[] = [];
-      
-      for (const d of querySnapshot.docs) {
-        const dinnerData = d.data() as Omit<Dinner, 'id'>;
-        const hostDoc = await getDoc(doc(db, 'users', dinnerData.hostId));
-        dinners.push({
-          id: d.id,
-          ...dinnerData,
-          host: hostDoc.exists() ? { id: hostDoc.id, ...hostDoc.data() } as UserProfile : undefined
-        });
-      }
-      return dinners;
+      const dinnerDataList = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() as Omit<Dinner, 'id'> }));
+      const uniqueHostIds = [...new Set(dinnerDataList.map(d => d.hostId))];
+      const hostDocs = await Promise.all(uniqueHostIds.map(id => getDoc(doc(db, 'users', id))));
+      const hostMap = Object.fromEntries(
+        hostDocs.filter(h => h.exists()).map(h => [h.id, { id: h.id, ...h.data() } as UserProfile])
+      );
+      return dinnerDataList.map(dinnerData => ({ ...dinnerData, host: hostMap[dinnerData.hostId] }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'dinners');
       return [];
     }
   },
 
-  async getUpcomingDinners() {
+  async getUpcomingDinners(pageSize = 48) {
     const dinnersRef = collection(db, 'dinners');
-    const q = query(dinnersRef, where('date', '>', Date.now() - 3600000), orderBy('date', 'asc'));
+    const q = query(dinnersRef, where('date', '>', Date.now() - 3600000), orderBy('date', 'asc'), limit(pageSize));
 
     try {
       const querySnapshot = await getDocs(q);
-      const dinners: Dinner[] = [];
-      
-      for (const d of querySnapshot.docs) {
-        const dinnerData = d.data() as Omit<Dinner, 'id'>;
-        const hostDoc = await getDoc(doc(db, 'users', dinnerData.hostId));
-        dinners.push({
-          id: d.id,
-          ...dinnerData,
-          host: hostDoc.exists() ? { id: hostDoc.id, ...hostDoc.data() } as UserProfile : undefined
-        });
-      }
-      return dinners;
+      const dinnerDataList = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() as Omit<Dinner, 'id'> }));
+      const uniqueHostIds = [...new Set(dinnerDataList.map(d => d.hostId))];
+      const hostDocs = await Promise.all(uniqueHostIds.map(id => getDoc(doc(db, 'users', id))));
+      const hostMap = Object.fromEntries(
+        hostDocs.filter(h => h.exists()).map(h => [h.id, { id: h.id, ...h.data() } as UserProfile])
+      );
+      return dinnerDataList.map(dinnerData => ({ ...dinnerData, host: hostMap[dinnerData.hostId] }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'dinners');
       return [];
@@ -118,13 +108,13 @@ export const dbService = {
     const q = query(collection(db, 'bookings'), where('guestId', '==', userId), orderBy('createdAt', 'desc'));
     try {
       const snapshot = await getDocs(q);
-      const bookings: Booking[] = [];
-      for (const d of snapshot.docs) {
-        const bookingData = d.data() as Omit<Booking, 'id'>;
-        const dinner = await this.getDinner(bookingData.dinnerId);
-        bookings.push({ id: d.id, ...bookingData, dinner: dinner || undefined });
-      }
-      return bookings;
+      const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() as Omit<Booking, 'id'> }));
+      const uniqueDinnerIds = [...new Set(bookingDataList.map(d => d.dinnerId))];
+      const dinners = await Promise.all(uniqueDinnerIds.map(id => this.getDinner(id)));
+      const dinnerMap = Object.fromEntries(
+        uniqueDinnerIds.map((id, i) => [id, dinners[i] || undefined])
+      );
+      return bookingDataList.map(b => ({ ...b, dinner: dinnerMap[b.dinnerId] }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'bookings');
       return [];
@@ -135,20 +125,18 @@ export const dbService = {
     const q = query(collection(db, 'bookings'), where('hostId', '==', userId), orderBy('createdAt', 'desc'));
     try {
       const snapshot = await getDocs(q);
-      const bookings: Booking[] = [];
-      for (const d of snapshot.docs) {
-        const bookingData = d.data() as Omit<Booking, 'id'>;
-        const dinner = await this.getDinner(bookingData.dinnerId);
-        // We'll also need the guest info
-        const guestDoc = await getDoc(doc(db, 'users', bookingData.guestId));
-        bookings.push({ 
-          id: d.id, 
-          ...bookingData, 
-          dinner: dinner || undefined,
-          guest: guestDoc.exists() ? { id: guestDoc.id, ...guestDoc.data() } as UserProfile : undefined
-        });
-      }
-      return bookings;
+      const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() as Omit<Booking, 'id'> }));
+      const uniqueDinnerIds = [...new Set(bookingDataList.map(d => d.dinnerId))];
+      const uniqueGuestIds = [...new Set(bookingDataList.map(d => d.guestId))];
+      const [dinners, guestDocs] = await Promise.all([
+        Promise.all(uniqueDinnerIds.map(id => this.getDinner(id))),
+        Promise.all(uniqueGuestIds.map(id => getDoc(doc(db, 'users', id))))
+      ]);
+      const dinnerMap = Object.fromEntries(uniqueDinnerIds.map((id, i) => [id, dinners[i] || undefined]));
+      const guestMap = Object.fromEntries(
+        guestDocs.filter(g => g.exists()).map(g => [g.id, { id: g.id, ...g.data() } as UserProfile])
+      );
+      return bookingDataList.map(b => ({ ...b, dinner: dinnerMap[b.dinnerId], guest: guestMap[b.guestId] }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'bookings');
       return [];
@@ -257,17 +245,13 @@ export const dbService = {
     const q = query(collection(db, 'reviews'), where('targetId', '==', targetId), orderBy('createdAt', 'desc'));
     try {
       const snapshot = await getDocs(q);
-      const reviews: Review[] = [];
-      for (const d of snapshot.docs) {
-        const reviewData = d.data() as Omit<Review, 'id'>;
-        const authorDoc = await getDoc(doc(db, 'users', reviewData.authorId));
-        reviews.push({ 
-          id: d.id, 
-          ...reviewData, 
-          author: authorDoc.exists() ? { id: authorDoc.id, ...authorDoc.data() } as UserProfile : undefined 
-        });
-      }
-      return reviews;
+      const reviewDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() as Omit<Review, 'id'> }));
+      const uniqueAuthorIds = [...new Set(reviewDataList.map(d => d.authorId))];
+      const authorDocs = await Promise.all(uniqueAuthorIds.map(id => getDoc(doc(db, 'users', id))));
+      const authorMap = Object.fromEntries(
+        authorDocs.filter(a => a.exists()).map(a => [a.id, { id: a.id, ...a.data() } as UserProfile])
+      );
+      return reviewDataList.map(r => ({ ...r, author: authorMap[r.authorId] }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'reviews');
       return [];

@@ -9,15 +9,31 @@ const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 const APP_URL = defineString('APP_URL');
 
+const RATE_LIMIT_WINDOW_MS = 10_000;
+
+async function checkRateLimit(uid: string, action: string): Promise<void> {
+  const ref = admin.firestore().collection('rateLimits').doc(`${uid}_${action}`);
+  await admin.firestore().runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const now = Date.now();
+    if (snap.exists && now - (snap.data()?.lastAt ?? 0) < RATE_LIMIT_WINDOW_MS) {
+      throw new HttpsError('resource-exhausted', 'Too many requests. Please wait a moment and try again.');
+    }
+    tx.set(ref, { lastAt: now });
+  });
+}
+
 export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
 
   const { bookingId } = request.data;
-  if (!bookingId) {
+  if (!bookingId || typeof bookingId !== 'string') {
     throw new HttpsError('invalid-argument', 'Booking ID is required.');
   }
+
+  await checkRateLimit(request.auth.uid, 'checkout');
 
   const bookingDoc = await admin.firestore().collection('bookings').doc(bookingId).get();
   if (!bookingDoc.exists) {
@@ -33,10 +49,23 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
     throw new HttpsError('failed-precondition', 'Booking must be confirmed by the host before payment.');
   }
 
+  const guestCount = booking?.guestCount;
+  if (typeof guestCount !== 'number' || guestCount < 1 || !Number.isInteger(guestCount)) {
+    throw new HttpsError('invalid-argument', 'Invalid guest count on booking.');
+  }
+
   const dinnerDoc = await admin.firestore().collection('dinners').doc(booking.dinnerId).get();
+  if (!dinnerDoc.exists) {
+    throw new HttpsError('not-found', 'Dinner not found.');
+  }
   const dinner = dinnerDoc.data();
 
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  const price = dinner?.price;
+  if (typeof price !== 'number' || price <= 0) {
+    throw new HttpsError('invalid-argument', 'Dinner has an invalid price.');
+  }
+
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-06-20' });
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
@@ -48,9 +77,9 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
             name: dinner?.title || 'Dinner Seat',
             description: `Dinner with ${dinner?.host?.displayName || 'Host'}`,
           },
-          unit_amount: (dinner?.price || 0) * 100,
+          unit_amount: Math.round(price * 100),
         },
-        quantity: booking.guestCount || 1,
+        quantity: guestCount,
       },
     ],
     mode: 'payment',
@@ -76,6 +105,12 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   }
 
   const { bookingId } = request.data;
+  if (!bookingId || typeof bookingId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Booking ID is required.');
+  }
+
+  await checkRateLimit(request.auth.uid, 'cancel');
+
   const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
   const bookingDoc = await bookingRef.get();
 
@@ -86,7 +121,7 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   if (booking?.status !== 'confirmed') throw new HttpsError('failed-precondition', 'Cannot cancel unconfirmed booking this way.');
 
   let refunded = false;
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-06-20' });
 
   if (booking?.paymentStatus === 'paid') {
     const paymentSnap = await admin.firestore().collection('payments')
@@ -116,30 +151,35 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
 
   await batch.commit();
 
-  // Waitlist logic
-  const waitlistSnap = await admin.firestore().collection('waitlist')
-    .where('dinnerId', '==', booking?.dinnerId)
-    .orderBy('joinedAt', 'asc')
-    .limit(1)
-    .get();
+  // Atomically claim the first waitlist entry to prevent double-notification
+  await admin.firestore().runTransaction(async (tx) => {
+    const waitlistSnap = await tx.get(
+      admin.firestore().collection('waitlist')
+        .where('dinnerId', '==', booking?.dinnerId)
+        .orderBy('joinedAt', 'asc')
+        .limit(1)
+    );
 
-  if (!waitlistSnap.empty) {
-    const entry = waitlistSnap.docs[0].data();
-    await admin.firestore().collection('notifications').doc(entry.userId).collection('items').add({
-      type: 'booking_confirmed',
-      message: `A seat just opened up at a table you were waiting for!`,
-      link: `/dinner/${booking?.dinnerId}`,
-      isRead: false,
-      createdAt: Date.now()
-    });
-    await waitlistSnap.docs[0].ref.delete();
-  }
+    if (!waitlistSnap.empty) {
+      const entry = waitlistSnap.docs[0].data();
+      tx.delete(waitlistSnap.docs[0].ref);
+      const notifRef = admin.firestore()
+        .collection('notifications').doc(entry.userId).collection('items').doc();
+      tx.set(notifRef, {
+        type: 'waitlist_available',
+        message: `A seat just opened up at a table you were waiting for!`,
+        link: `/dinner/${booking?.dinnerId}`,
+        isRead: false,
+        createdAt: Date.now()
+      });
+    }
+  });
 
   return { success: true, refunded };
 });
 
 export const stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-06-20' });
   const sig = req.headers['stripe-signature'] as string;
 
   let event;
@@ -171,7 +211,6 @@ export const stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEB
         createdAt: Date.now(),
       });
 
-      // Notify guest
       const bookingDoc = await admin.firestore().collection('bookings').doc(bookingId).get();
       const booking = bookingDoc.data();
       if (booking) {

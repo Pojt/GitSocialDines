@@ -42,15 +42,22 @@ export const Explore: React.FC = () => {
   
   const [mapCenter, setMapCenter] = useState<[number, number]>([52.52, 13.405]); // Berlin default
   const [mapZoom, setMapZoom] = useState(11);
+  const [error, setError] = useState<string | null>(null);
 
   const { profile } = useAuth();
 
   useEffect(() => {
     const fetch = async () => {
       setLoading(true);
-      const data = await dbService.getUpcomingDinners();
-      setDinners(data);
-      setLoading(false);
+      setError(null);
+      try {
+        const data = await dbService.getUpcomingDinners();
+        setDinners(data);
+      } catch (err) {
+        setError('Failed to load dinners. Please refresh and try again.');
+      } finally {
+        setLoading(false);
+      }
     };
     fetch();
 
@@ -99,6 +106,11 @@ export const Explore: React.FC = () => {
 
   return (
     <div className="bg-white min-h-screen">
+      {error && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-50 border border-rose-200 text-rose-700 px-6 py-3 rounded-xl shadow-lg text-sm">
+          {error}
+        </div>
+      )}
       {/* Search & Meta Header */}
       <div className="pt-24 sm:pt-28 pb-8 px-4 sm:px-6 lg:px-8 border-b border-brand-light sticky top-0 bg-white/95 backdrop-blur-xl z-30">
         <div className="max-w-7xl mx-auto space-y-6">

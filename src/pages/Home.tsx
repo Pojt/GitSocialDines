@@ -10,6 +10,7 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps';
 export const Home: React.FC = () => {
   const [dinners, setDinners] = useState<Dinner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'today' | 'week'>('all');
   const [searchQuery, setSearchQuery] = useState({ where: '', when: '', guests: 1 });
   const navigate = useNavigate();
@@ -53,14 +54,13 @@ export const Home: React.FC = () => {
 
   useEffect(() => {
     const fetch = async () => {
+      setLoading(true);
+      setError(null);
       try {
-        setLoading(true);
         const data = await dbService.getDinners({});
-        if (data) {
-          setDinners(data);
-        }
+        if (data) setDinners(data);
       } catch (err) {
-        console.error("Failed to fetch dinners:", err);
+        setError('Failed to load dinners. Please refresh and try again.');
       } finally {
         setLoading(false);
       }
@@ -103,6 +103,11 @@ export const Home: React.FC = () => {
 
   return (
     <div className="pb-20">
+      {error && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-50 border border-rose-200 text-rose-700 px-6 py-3 rounded-xl shadow-lg text-sm">
+          {error}
+        </div>
+      )}
       {/* Hero Section - Covering 80% of the screen */}
       <section className="relative h-[80vh] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 bg-bg-warm overflow-hidden">
         {/* Subtle background abstract element */}

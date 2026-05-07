@@ -48,6 +48,7 @@ export const Bookings: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [payingBookingId, setPayingBookingId] = useState<string | null>(null);
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const paymentResult = new URLSearchParams(location.search).get('payment');
 
@@ -72,7 +73,7 @@ export const Bookings: React.FC = () => {
       setBookings(guestData);
       setHostBookings(hostData);
     } catch (err) {
-      console.error("fetchData error:", err);
+      setActionError('Failed to load bookings. Please refresh and try again.');
     } finally {
       setLoading(false);
     }
@@ -100,8 +101,8 @@ export const Bookings: React.FC = () => {
       const createSession = httpsCallable<{ bookingId: string }, { url: string }>(fns, 'createCheckoutSession');
       const result = await createSession({ bookingId });
       window.location.href = result.data.url;
-    } catch (err) {
-      console.error('Payment error:', err);
+    } catch (err: any) {
+      setActionError(err?.message || 'Payment failed. Please try again.');
       setPayingBookingId(null);
     }
   };
@@ -114,8 +115,8 @@ export const Bookings: React.FC = () => {
       const cancel = httpsCallable<{ bookingId: string }, { success: boolean; refunded: boolean }>(fns, 'cancelBooking');
       await cancel({ bookingId: booking.id });
       await fetchData();
-    } catch (err) {
-      console.error('Cancel error:', err);
+    } catch (err: any) {
+      setActionError(err?.message || 'Cancellation failed. Please try again.');
     } finally {
       setCancellingBookingId(null);
     }
@@ -142,6 +143,16 @@ export const Bookings: React.FC = () => {
 
   return (
     <div className="pt-28 pb-20 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      {actionError && (
+        <div
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-rose-50 border border-rose-200 text-rose-700 px-6 py-3 rounded-xl shadow-lg text-sm flex items-center gap-3"
+          onClick={() => setActionError(null)}
+        >
+          <AlertCircle size={16} />
+          {actionError}
+          <span className="ml-2 cursor-pointer font-bold">✕</span>
+        </div>
+      )}
       <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h1 className="text-4xl sm:text-5xl font-serif font-medium text-ink mb-4">Your dining timeline</h1>
