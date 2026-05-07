@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Search, Calendar, Clock, Sparkles, Star } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DinnerCard, SkeletonCard } from '../components/DinnerCard';
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
 
 export const Home: React.FC = () => {
   const [dinners, setDinners] = useState<Dinner[]>([]);
@@ -13,6 +14,8 @@ export const Home: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState({ where: '', when: '', guests: 1 });
   const navigate = useNavigate();
   const dateInputRef = useRef<HTMLInputElement>(null);
+  const whereInputRef = useRef<HTMLInputElement>(null);
+  const places = useMapsLibrary('places');
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,24 +26,30 @@ export const Home: React.FC = () => {
     navigate(`/explore?${params.toString()}`);
   };
 
-  const openDatePicker = (e: React.MouseEvent) => {
-    // We don't stop propagation because we actually want the click to potentially hit the input too
-    // if the browser supports native behavior better than manual triggers.
-    // e.stopPropagation(); 
-    
-    if (dateInputRef.current) {
-      try {
-        if (typeof dateInputRef.current.showPicker === 'function') {
-          dateInputRef.current.showPicker();
-        } else {
-          dateInputRef.current.focus();
-        }
-      } catch (err) {
-        console.warn("showPicker failed, falling back to focus", err);
-        dateInputRef.current.focus();
+  useEffect(() => {
+    if (!places || !whereInputRef.current) return;
+
+    const autocomplete = new places.Autocomplete(whereInputRef.current, {
+      fields: ['formatted_address', 'geometry', 'name'],
+      types: ['(cities)'] // Restrict to cities for better UX in a dining app, or remove if specific addresses are needed
+    });
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (place.formatted_address) {
+        setSearchQuery(prev => ({ ...prev, where: place.formatted_address || '' }));
+      } else if (place.name) {
+        setSearchQuery(prev => ({ ...prev, where: place.name }));
       }
-    }
-  };
+    });
+
+    // Clean up
+    return () => {
+      if (google.maps.event) {
+        google.maps.event.clearInstanceListeners(autocomplete);
+      }
+    };
+  }, [places]);
 
   useEffect(() => {
     const fetch = async () => {
@@ -128,6 +137,7 @@ export const Home: React.FC = () => {
               <div className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors">
                 <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">Where</label>
                 <input 
+                  ref={whereInputRef}
                   type="text" 
                   placeholder="Any neighborhood"
                   value={searchQuery.where}
@@ -138,8 +148,7 @@ export const Home: React.FC = () => {
 
               {/* When */}
               <div 
-                onClick={openDatePicker}
-                className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors cursor-pointer relative"
+                className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors cursor-pointer relative overflow-hidden"
               >
                 <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">When</label>
                 <div className={`truncate pointer-events-none ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-300 font-medium'}`}>
@@ -150,7 +159,7 @@ export const Home: React.FC = () => {
                   type="date" 
                   value={searchQuery.when}
                   onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
-                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:inset-0 [&::-webkit-calendar-picker-indicator]:w-full [&::-webkit-calendar-picker-indicator]:h-full [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0"
                 />
               </div>
 
