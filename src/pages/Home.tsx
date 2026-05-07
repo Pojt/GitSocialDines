@@ -121,27 +121,16 @@ export const Home: React.FC = () => {
                 onClick={openDatePicker}
                 className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors cursor-pointer relative"
               >
-                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">When</label>
-                <div className={`truncate ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-300 font-medium'}`}>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">When</label>
+                <div className={`truncate pointer-events-none ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-300 font-medium'}`}>
                   {searchQuery.when ? new Date(searchQuery.when).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : "Add dates"}
                 </div>
-                <input 
+                <input
                   ref={dateInputRef}
-                  type="date" 
+                  type="date"
                   value={searchQuery.when}
                   onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if ('showPicker' in HTMLInputElement.prototype) {
-                      (e.target as HTMLInputElement).showPicker();
-                    }
-                  }}
-                  onFocus={(e) => {
-                    if ('showPicker' in HTMLInputElement.prototype) {
-                      e.target.showPicker();
-                    }
-                  }}
                 />
               </div>
 
