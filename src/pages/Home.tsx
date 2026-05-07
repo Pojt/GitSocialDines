@@ -24,32 +24,52 @@ export const Home: React.FC = () => {
   };
 
   const openDatePicker = (e: React.MouseEvent) => {
-    e.stopPropagation();
+    // We don't stop propagation because we actually want the click to potentially hit the input too
+    // if the browser supports native behavior better than manual triggers.
+    // e.stopPropagation(); 
+    
     if (dateInputRef.current) {
       try {
-        // Modern browsers support showPicker()
-        if ('showPicker' in HTMLInputElement.prototype) {
+        if (typeof dateInputRef.current.showPicker === 'function') {
           dateInputRef.current.showPicker();
         } else {
           dateInputRef.current.focus();
-          dateInputRef.current.click();
         }
       } catch (err) {
+        console.warn("showPicker failed, falling back to focus", err);
         dateInputRef.current.focus();
-        dateInputRef.current.click();
       }
     }
   };
 
   useEffect(() => {
     const fetch = async () => {
-      setLoading(true);
-      const data = await dbService.getDinners({});
-      setDinners(data);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const data = await dbService.getDinners({});
+        if (data) {
+          setDinners(data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch dinners:", err);
+      } finally {
+        setLoading(false);
+      }
     };
     fetch();
   }, []);
+
+  const formatDisplayDate = (dateStr: string) => {
+    if (!dateStr) return "Add dates";
+    try {
+      // Adding time part ensures we get the date in local time consistently
+      const d = new Date(dateStr + 'T12:00:00');
+      if (isNaN(d.getTime())) return "Add dates";
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return "Add dates";
+    }
+  };
 
   const todayStr = new Date().toISOString().split('T')[0];
   
@@ -121,9 +141,9 @@ export const Home: React.FC = () => {
                 onClick={openDatePicker}
                 className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors cursor-pointer relative"
               >
-                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">When</label>
-                <div className={`truncate ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-300 font-medium'}`}>
-                  {searchQuery.when ? new Date(searchQuery.when).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : "Add dates"}
+                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1 pointer-events-none">When</label>
+                <div className={`truncate pointer-events-none ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-300 font-medium'}`}>
+                  {formatDisplayDate(searchQuery.when)}
                 </div>
                 <input 
                   ref={dateInputRef}
@@ -131,17 +151,6 @@ export const Home: React.FC = () => {
                   value={searchQuery.when}
                   onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
                   className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if ('showPicker' in HTMLInputElement.prototype) {
-                      (e.target as HTMLInputElement).showPicker();
-                    }
-                  }}
-                  onFocus={(e) => {
-                    if ('showPicker' in HTMLInputElement.prototype) {
-                      e.target.showPicker();
-                    }
-                  }}
                 />
               </div>
 
