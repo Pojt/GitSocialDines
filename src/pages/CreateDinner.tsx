@@ -11,7 +11,7 @@ import { ImageUpload } from '../components/ImageUpload';
 export const CreateDinner: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(isEditMode);
@@ -52,7 +52,6 @@ export const CreateDinner: React.FC = () => {
           }
           
           const date = new Date(dinner.date);
-          // Format for datetime-local: YYYY-MM-DDThh:mm
           const formattedDate = date.toISOString().slice(0, 16);
           
           setFormData({
@@ -88,11 +87,11 @@ export const CreateDinner: React.FC = () => {
     }));
   };
 
-  if (!user) {
+  if (!user && !authLoading) {
     return (
       <div className="pt-32 pb-20 max-w-2xl mx-auto px-4 text-center">
         <AlertCircle className="mx-auto text-brand mb-4" size={48} />
-        <h1 className="serif text-3xl mb-4">Membership Required</h1>
+        <h1 className="font-serif text-3xl mb-4">Membership Required</h1>
         <p className="text-stone-500 mb-8">You need to join our community before you can host your own table.</p>
         <button onClick={() => navigate('/login')} className="olive-btn">Join Now</button>
       </div>
@@ -176,7 +175,7 @@ export const CreateDinner: React.FC = () => {
              <ChefHat size={20} />
              <span className="text-[10px] font-black uppercase tracking-[0.2em]">{isEditMode ? 'Update your masterpiece' : 'Open your kitchen'}</span>
           </div>
-          <h1 className="serif text-5xl sm:text-6xl text-ink">{isEditMode ? 'Edit Dinner' : 'Host a Dinner'}</h1>
+          <h1 className="font-serif text-5xl sm:text-6xl text-ink">{isEditMode ? 'Edit Dinner' : 'Host a Dinner'}</h1>
           <p className="text-stone-500 font-medium italic font-serif mt-4 opacity-70">
             {isEditMode ? 'Refine the story of your table.' : 'Tell the story of your table. What makes this evening special?'}
           </p>
@@ -246,7 +245,7 @@ export const CreateDinner: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-3">Atmosphere</label>
-                  <select 
+                   <select 
                     className="w-full bg-white border border-brand-light rounded-full px-6 py-3 text-xs font-bold text-stone-600 focus:outline-none appearance-none cursor-pointer"
                     value={formData.vibe}
                     onChange={e => setFormData({ ...formData, vibe: e.target.value })}

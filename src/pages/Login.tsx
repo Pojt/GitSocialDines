@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, LogIn, UtensilsCrossed, Globe, Sparkles, Loader2, Mail, Lock, User, ArrowRight } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { signInWithGoogle, signInWithMicrosoft, signUpWithEmail, signInWithEmail, user, loading } = useAuth();
+  const { signInWithGoogle, signInWithMicrosoft, signUpWithEmail, signInWithEmail, user, profile, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [authError, setAuthError] = useState<string | null>(null);
@@ -22,10 +22,28 @@ export const Login: React.FC = () => {
   // Redirect if already logged in
   React.useEffect(() => {
     if (user && !loading) {
+      // If we have a user but no profile yet, we just wait
+      if (!profile) return;
+
+      console.log("Login: checking profile completion", profile);
+
+      // Check if profile is incomplete (no interests)
+      const isIncomplete = !profile.interests || profile.interests.length === 0;
+      
+      // If incomplete, go to onboarding (preserving the 'from' location)
+      if (isIncomplete) {
+        navigate('/onboarding', { 
+          replace: true, 
+          state: { from: location.state?.from } 
+        });
+        return;
+      }
+
+      // If complete, go to the intended destination or home
       const from = (location.state as any)?.from?.pathname || "/";
       navigate(from, { replace: true });
     }
-  }, [user, loading, navigate, location]);
+  }, [user, profile, loading, navigate, location]);
 
   const handleGoogleSignIn = async () => {
     setIsSubmitting(true);

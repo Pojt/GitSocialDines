@@ -15,6 +15,7 @@ import { HostProfile } from './pages/HostProfile';
 import { Bookings } from './pages/Bookings';
 import { ReviewPage } from './pages/ReviewPage';
 import { Login } from './pages/Login';
+import { Onboarding } from './pages/Onboarding';
 import { CreateDinner } from './pages/CreateDinner';
 import { Messages } from './pages/Messages';
 import { seedDB } from './lib/seedData';
@@ -36,6 +37,7 @@ export default function App() {
               <Route path="/" element={<Home />} />
               <Route path="/explore" element={<Explore />} />
               <Route path="/login" element={<Login />} />
+              <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/dinner/:id" element={<DinnerDetail />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/bookings" element={<Bookings />} />

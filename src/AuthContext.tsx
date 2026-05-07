@@ -27,28 +27,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setUser(user);
         if (user) {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userRef);
+          
           if (userDoc.exists()) {
-            setProfile({ id: user.uid, ...userDoc.data() } as UserProfile);
+            const data = userDoc.data() as UserProfile;
+            console.log("Auth: Profile found", data);
+            
+            // Backfill email if missing
+            if (!data.email && user.email) {
+              try {
+                await setDoc(userRef, { email: user.email }, { merge: true });
+                console.log("Auth: Backfilled email");
+              } catch (e) {
+                console.warn("Auth: Failed to backfill email", e);
+              }
+            }
+            setProfile({ id: user.uid, ...data, email: data.email || user.email || undefined } as UserProfile);
           } else {
+            console.log("Auth: Creating new profile for", user.uid);
             // Create a basic profile if it doesn't exist
             const newProfile = {
+              email: user.email || '',
               displayName: user.displayName || 'Anonymous Guest',
               photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`,
               isVerified: false,
+              onboardingComplete: false,
               interests: [],
               city: 'Global Citizen',
               bio: 'A fellow traveler and diner.',
               createdAt: Date.now()
             };
-            await setDoc(doc(db, 'users', user.uid), newProfile);
-            setProfile({ id: user.uid, ...newProfile } as UserProfile);
+            try {
+              await setDoc(userRef, newProfile);
+              setProfile({ id: user.uid, ...newProfile } as UserProfile);
+            } catch (e) {
+              console.error("Auth: Failed to create new profile", e);
+              // Set a temporary profile in memory so the app doesn't stay stuck
+              setProfile({ id: user.uid, ...newProfile } as UserProfile);
+            }
           }
         } else {
           setProfile(null);
         }
       } catch (err) {
-        console.error("Auth state change error:", err);
+        console.error("Auth: Critical state change error:", err);
       } finally {
         setLoading(false);
       }

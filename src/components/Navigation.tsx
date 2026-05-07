@@ -65,7 +65,7 @@ export const Navigation: React.FC = () => {
                   to="/host/create"
                   className={`text-sm font-semibold transition-all ${isActive('/host/create') ? 'text-brand' : 'text-stone-500 hover:text-brand'}`}
                 >
-                  Host a Dinner
+                  Set a Table
                 </Link>
               </div>
             )}
@@ -135,7 +135,7 @@ export const Navigation: React.FC = () => {
           <Home size={18} />
           <span className="text-[10px] mt-1 font-bold uppercase tracking-wider">Home</span>
         </Link>
-        <Link to="/bookings" className={`flex flex-col items-center relative ${isActive('/bookings') ? 'text-brand' : 'text-stone-400'}`}>
+        <Link to="/bookings" className={`flex flex-col items-center resident relative ${isActive('/bookings') ? 'text-brand' : 'text-stone-400'}`}>
           <Calendar size={18} />
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-2 min-w-[14px] h-3.5 bg-brand text-white rounded-full text-[7px] font-black flex items-center justify-center px-0.5">

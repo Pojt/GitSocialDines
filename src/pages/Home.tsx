@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../lib/dbService';
 import { Dinner } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -10,7 +10,36 @@ export const Home: React.FC = () => {
   const [dinners, setDinners] = useState<Dinner[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<'all' | 'today' | 'week'>('all');
+  const [searchQuery, setSearchQuery] = useState({ where: '', when: '', guests: 1 });
   const navigate = useNavigate();
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const params = new URLSearchParams();
+    if (searchQuery.where) params.append('location', searchQuery.where);
+    if (searchQuery.when) params.append('date', searchQuery.when);
+    if (searchQuery.guests > 1) params.append('guests', searchQuery.guests.toString());
+    navigate(`/explore?${params.toString()}`);
+  };
+
+  const openDatePicker = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (dateInputRef.current) {
+      try {
+        // Modern browsers support showPicker()
+        if ('showPicker' in HTMLInputElement.prototype) {
+          dateInputRef.current.showPicker();
+        } else {
+          dateInputRef.current.focus();
+          dateInputRef.current.click();
+        }
+      } catch (err) {
+        dateInputRef.current.focus();
+        dateInputRef.current.click();
+      }
+    }
+  };
 
   useEffect(() => {
     const fetch = async () => {
@@ -44,67 +73,139 @@ export const Home: React.FC = () => {
                           dinners;
 
   return (
-    <div className="pt-28 pb-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      {/* Search Bar Trigger (Airbnb style) */}
-      <div className="max-w-xl mx-auto mb-16">
-        <button 
-          onClick={() => navigate('/explore')}
-          className="w-full bg-white rounded-full py-3 px-6 border border-brand-light shadow-lg hover:shadow-xl transition-all flex items-center justify-between group"
-        >
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-brand text-white rounded-full flex items-center justify-center">
-              <Search size={18} strokeWidth={3} />
-            </div>
-            <div className="text-left">
-              <p className="text-sm font-semibold text-ink">Where to? Any table</p>
-              <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Any Week • Add Guests</p>
-            </div>
-          </div>
-          <div className="hidden sm:flex items-center gap-2 text-stone-300 group-hover:text-brand transition-colors">
-            <span className="text-[10px] font-black uppercase tracking-widest">Explore</span>
-          </div>
-        </button>
-      </div>
+    <div className="pb-20">
+      {/* Hero Section - Covering 80% of the screen */}
+      <section className="relative h-[80vh] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 bg-bg-warm overflow-hidden">
+        {/* Subtle background abstract element */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[radial-gradient(circle_at_center,rgba(115,103,72,0.03)_0%,transparent_70%)] pointer-events-none" />
+        
+        <div className="relative z-10 w-full max-w-4xl text-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: "easeOut" }}
+          >
+            <h2 className="serif text-4xl sm:text-6xl font-bold text-ink leading-tight mb-6">
+              A seat for every story.
+            </h2>
+            <p className="text-stone-500 font-serif italic text-lg sm:text-xl opacity-70 leading-relaxed mb-12 max-w-2xl mx-auto">
+              Intimate dinner parties where the menu and atmosphere are as curated as the guests.
+            </p>
+          </motion.div>
 
-      {/* Hero Section */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-8 mb-16">
-        <div className="max-w-2xl">
-          <h2 className="serif text-5xl sm:text-7xl font-medium text-ink leading-tight">
-            Find your seat.
-          </h2>
-          <p className="text-stone-500 font-serif italic text-lg mt-4 opacity-70">
-            Discover intimate dinner parties hosted by locals.
-          </p>
+          {/* Search Experience - Centralized & Inline */}
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2, duration: 0.5 }}
+            className="max-w-3xl mx-auto"
+          >
+            <form 
+              onSubmit={handleSearch}
+              className="w-full bg-white rounded-[32px] p-2 border border-brand-light shadow-2xl hover:shadow-brand/5 transition-all flex flex-col md:flex-row items-center gap-1 group"
+            >
+              {/* Where */}
+              <div className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">Where</label>
+                <input 
+                  type="text" 
+                  placeholder="Any neighborhood"
+                  value={searchQuery.where}
+                  onChange={(e) => setSearchQuery(prev => ({ ...prev, where: e.target.value }))}
+                  className="w-full bg-transparent border-none p-0 focus:ring-0 focus:outline-none text-ink font-bold placeholder:text-stone-300 placeholder:font-medium"
+                />
+              </div>
+
+              {/* When */}
+              <div 
+                onClick={openDatePicker}
+                className="flex-1 w-full px-6 py-3 text-left border-r border-stone-100 group-hover:border-stone-200 transition-colors cursor-pointer relative"
+              >
+                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">When</label>
+                <div className={`truncate ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-300 font-medium'}`}>
+                  {searchQuery.when ? new Date(searchQuery.when).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : "Add dates"}
+                </div>
+                <input 
+                  ref={dateInputRef}
+                  type="date" 
+                  value={searchQuery.when}
+                  onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if ('showPicker' in HTMLInputElement.prototype) {
+                      (e.target as HTMLInputElement).showPicker();
+                    }
+                  }}
+                  onFocus={(e) => {
+                    if ('showPicker' in HTMLInputElement.prototype) {
+                      e.target.showPicker();
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Who */}
+              <div className="flex-1 w-full px-6 py-3 text-left">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-stone-400 mb-1">Who</label>
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max="20"
+                    value={searchQuery.guests}
+                    onChange={(e) => setSearchQuery(prev => ({ ...prev, guests: parseInt(e.target.value) || 1 }))}
+                    className="w-12 bg-transparent border-none p-0 focus:ring-0 focus:outline-none text-ink font-bold"
+                  />
+                  <span className="text-stone-300 font-medium">guests</span>
+                </div>
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full md:w-14 h-14 bg-stone-900 text-white rounded-full flex items-center justify-center flex-shrink-0 hover:bg-brand transition-all group-hover:scale-105"
+              >
+                <Search size={22} strokeWidth={2.5} />
+              </button>
+            </form>
+          </motion.div>
         </div>
-      </div>
 
-      {/* Visible & Selectable Date Filters */}
-      <div className="flex flex-wrap items-center justify-center gap-3 mb-20 border-b border-brand-light pb-8">
-        <button 
-          onClick={() => setActiveFilter('all')}
-          className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeFilter === 'all' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'bg-white text-stone-500 hover:bg-stone-50 border border-brand-light'}`}
-        >
-          Discover All
-        </button>
-        <button 
-          onClick={() => setActiveFilter('today')}
-          className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeFilter === 'today' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'bg-white text-stone-500 hover:bg-stone-50 border border-brand-light'}`}
-        >
-          <Clock size={14} />
-          Happening Today
-        </button>
-        <button 
-          onClick={() => setActiveFilter('week')}
-          className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeFilter === 'week' ? 'bg-brand/20 text-brand border border-brand shadow-sm' : 'bg-white text-stone-500 hover:bg-stone-50 border border-brand-light'}`}
-        >
-          <Calendar size={14} />
-          Happening This Week
-        </button>
-      </div>
+        {/* Bottom indicator for remaining 20% content */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 opacity-30 animate-bounce">
+           <span className="text-[8px] font-black uppercase tracking-[0.4em] text-ink">Discover</span>
+           <div className="w-px h-8 bg-ink" />
+        </div>
+      </section>
 
-      <div className="space-y-32">
-        {/* Dynamic Filter Section / All Dinners */}
-        <section>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-20">
+        {/* Visible & Selectable Date Filters */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mb-16 border-b border-brand-light pb-8">
+          <button 
+            onClick={() => setActiveFilter('all')}
+            className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeFilter === 'all' ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'bg-white text-stone-500 hover:bg-stone-50 border border-brand-light'}`}
+          >
+            Discover All
+          </button>
+          <button 
+            onClick={() => setActiveFilter('today')}
+            className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeFilter === 'today' ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/20' : 'bg-white text-stone-500 hover:bg-stone-50 border border-brand-light'}`}
+          >
+            <Clock size={14} />
+            Happening Today
+          </button>
+          <button 
+            onClick={() => setActiveFilter('week')}
+            className={`px-8 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeFilter === 'week' ? 'bg-brand/20 text-brand border border-brand shadow-sm' : 'bg-white text-stone-500 hover:bg-stone-50 border border-brand-light'}`}
+          >
+            <Calendar size={14} />
+            Happening This Week
+          </button>
+        </div>
+
+        <div className="space-y-32">
+          {/* Dynamic Filter Section / All Dinners */}
+          <section>
           {activeFilter !== 'all' && (
             <div className="flex items-center justify-between mb-8">
                <div className="flex items-center space-x-2 text-brand">
@@ -151,41 +252,50 @@ export const Home: React.FC = () => {
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                className="bg-brand/5 -mx-4 sm:-mx-8 lg:-mx-20 px-4 sm:px-8 lg:px-20 py-24 rounded-[64px] mb-32"
+                className="bg-[#F2F1EA] -mx-4 sm:-mx-8 lg:-mx-20 px-4 sm:px-8 lg:px-20 py-32 rounded-[80px] mb-32 border-y border-brand-light"
               >
                 <div className="max-w-7xl mx-auto">
-                  <div className="flex items-center justify-between mb-12">
-                    <div>
-                      <div className="flex items-center space-x-2 text-brand mb-2">
+                  <div className="flex flex-col sm:flex-row items-end justify-between mb-16 gap-6">
+                    <div className="text-center sm:text-left">
+                      <div className="flex items-center justify-center sm:justify-start space-x-2 text-brand mb-4">
                         <Star size={16} strokeWidth={2.5} />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Curated Tables</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.3em]">Tables of the month</span>
                       </div>
-                      <h3 className="serif text-4xl text-ink">Most Loved This Week</h3>
+                      <h3 className="serif text-3xl sm:text-4xl text-ink leading-tight">Discover your next favorite local table</h3>
                     </div>
                     <button 
                       onClick={() => navigate('/explore')}
-                      className="hidden sm:flex items-center gap-2 bg-white text-brand px-6 py-3 rounded-full border border-brand-light font-bold text-xs shadow-sm hover:shadow-md transition-all"
+                      className="bg-brand text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-widest shadow-xl shadow-brand/20 hover:scale-105 transition-all text-center"
                     >
-                      Explore all table vibes
+                      Find your table
                     </button>
                   </div>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                    {loading ? [1,2].map(i => <div key={i} className="h-64 bg-stone-200 animate-pulse rounded-[40px]" />) : 
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-20">
+                    {loading ? [1,2].map(i => <div key={i} className="h-[500px] bg-stone-200 animate-pulse rounded-[40px]" />) : 
                       featuredDinners.slice(0, 2).map((dinner, idx) => (
-                        <Link key={dinner.id} to={`/dinner/${dinner.id}`} className="group relative h-[400px] rounded-[48px] overflow-hidden shadow-2xl shadow-brand/20">
+                        <Link key={dinner.id} to={`/dinner/${dinner.id}`} className="group block relative h-[550px] rounded-[64px] overflow-hidden shadow-2xl transition-all hover:scale-[1.02]">
                           <img 
-                            src={dinner.images[0]} 
-                            className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" 
+                            src={dinner.images[0] || dinner.host?.photoURL || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80'} 
+                            className="w-full h-full object-cover transition-transform duration-[1500ms] group-hover:scale-110" 
                             alt="" 
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                          <div className="absolute bottom-10 left-10 right-10">
-                            <div className="flex gap-2 mb-4">
-                              <span className="bg-white/20 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">{dinner.cuisine}</span>
-                              <span className="bg-brand text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">${dinner.price}</span>
+                          <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/20 to-transparent opacity-80" />
+                          <div className="absolute bottom-12 left-12 right-12">
+                            <div className="flex gap-2 mb-6">
+                              <span className="bg-brand text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">{dinner.vibe} Vibe</span>
+                              <span className="bg-white/20 backdrop-blur text-white px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">{dinner.cuisine}</span>
                             </div>
-                            <h4 className="serif text-4xl text-white mb-2 leading-tight">{dinner.title}</h4>
-                            <p className="text-white/70 text-sm font-medium">Hosted by {dinner.host?.displayName}</p>
+                            <h4 className="serif text-4xl text-white mb-4 leading-tight">"{dinner.title}"</h4>
+                            <div className="flex items-center gap-4 pt-6 border-t border-white/20">
+                               <div className="flex -space-x-2">
+                                  {dinner.host?.interests?.slice(0, 3).map(interest => (
+                                    <div key={interest} className="w-8 h-8 rounded-full bg-brand border-2 border-ink flex items-center justify-center text-[10px] font-bold text-white shadow-xl">
+                                      {interest[0]}
+                                    </div>
+                                  ))}
+                               </div>
+                               <span className="text-white/60 text-xs font-medium uppercase tracking-[0.2em]">Hosted by {dinner.host?.displayName}</span>
+                            </div>
                           </div>
                         </Link>
                       ))
@@ -237,21 +347,21 @@ export const Home: React.FC = () => {
           )}
         </section>
       </div>
-
-      
-      {/* Final Call to Action */}
-      <div className="mt-40 text-center py-20 bg-stone-900 rounded-[64px] text-white">
-        <Sparkles size={40} className="mx-auto mb-6 text-brand" />
-        <h3 className="serif text-5xl mb-6">Ready to find your seat?</h3>
-        <p className="text-stone-400 mb-10 max-w-sm mx-auto">Discover the art of dining with strangers who feel like old friends.</p>
-        <button 
-          onClick={() => navigate('/explore')}
-          className="bg-brand text-white px-10 py-5 rounded-full text-sm font-black uppercase tracking-widest hover:bg-brand/90 transition-all shadow-xl shadow-brand/20"
-        >
-          Explore All Dinners
-        </button>
-      </div>
     </div>
+
+    {/* Final Call to Action */}
+    <div className="mt-40 text-center py-20 bg-stone-900 rounded-[64px] text-white px-6">
+      <Sparkles size={40} className="mx-auto mb-6 text-brand" />
+      <h3 className="serif text-3xl sm:text-4xl mb-6">Ready to find your seat?</h3>
+      <p className="text-stone-400 mb-10 max-w-sm mx-auto">Discover the art of dining with strangers who feel like old friends.</p>
+      <button 
+        onClick={() => navigate('/explore')}
+        className="bg-brand text-white px-10 py-5 rounded-full text-sm font-black uppercase tracking-widest hover:bg-brand/90 transition-all shadow-xl shadow-brand/20"
+      >
+        Explore All Dinners
+      </button>
+    </div>
+  </div>
   );
 };
 

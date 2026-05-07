@@ -1,249 +1,190 @@
 import { onCall, onRequest, HttpsError } from 'firebase-functions/v2/https';
 import { defineSecret, defineString } from 'firebase-functions/params';
-import { initializeApp } from 'firebase-admin/app';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import * as admin from 'firebase-admin';
 import Stripe from 'stripe';
 
-initializeApp();
-const db = getFirestore();
+admin.initializeApp();
 
-const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
-const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
-const appUrl = defineString('APP_URL', { default: 'http://localhost:3000' });
+const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
+const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
+const APP_URL = defineString('APP_URL');
 
-function stripe() {
-  return new Stripe(stripeSecretKey.value(), { apiVersion: '2024-10-28' });
-}
-
-/**
- * Callable: creates a Stripe Checkout Session for a confirmed booking.
- * Returns { url } — redirect the user to this URL to complete payment.
- *
- * Required setup:
- *   firebase functions:secrets:set STRIPE_SECRET_KEY
- *   firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
- *   firebase functions:params:set APP_URL=https://your-app.web.app
- */
-export const createCheckoutSession = onCall(
-  { secrets: [stripeSecretKey] },
-  async (request) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
-
-    const { bookingId } = request.data as { bookingId: string };
-    if (!bookingId) throw new HttpsError('invalid-argument', 'bookingId is required');
-
-    const bookingSnap = await db.collection('bookings').doc(bookingId).get();
-    if (!bookingSnap.exists) throw new HttpsError('not-found', 'Booking not found');
-    const booking = bookingSnap.data()!;
-
-    if (booking.guestId !== uid) {
-      throw new HttpsError('permission-denied', 'Not your booking');
-    }
-    if (booking.status !== 'confirmed') {
-      throw new HttpsError('failed-precondition', 'Booking must be confirmed before payment');
-    }
-    if (booking.paymentStatus === 'paid') {
-      throw new HttpsError('already-exists', 'Payment already completed');
-    }
-
-    const dinnerSnap = await db.collection('dinners').doc(booking.dinnerId).get();
-    if (!dinnerSnap.exists) throw new HttpsError('not-found', 'Dinner not found');
-    const dinner = dinnerSnap.data()!;
-
-    const session = await stripe().checkout.sessions.create({
-      mode: 'payment',
-      line_items: [
-        {
-          price_data: {
-            currency: (dinner.currency || 'usd').toLowerCase(),
-            product_data: {
-              name: dinner.title,
-              description: `${booking.guestCount} guest${booking.guestCount > 1 ? 's' : ''} · ${dinner.cuisine} dinner`
-            },
-            unit_amount: Math.round(dinner.price * 100)
-          },
-          quantity: booking.guestCount
-        }
-      ],
-      success_url: `${appUrl.value()}/bookings?payment=success`,
-      cancel_url: `${appUrl.value()}/bookings?payment=cancelled`,
-      metadata: { bookingId, guestId: uid, dinnerId: booking.dinnerId }
-    });
-
-    await bookingSnap.ref.update({
-      paymentStatus: 'awaiting_payment',
-      stripeSessionId: session.id
-    });
-
-    return { url: session.url };
+export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
   }
-);
 
-/**
- * HTTP: Stripe webhook endpoint.
- * Register this URL in your Stripe dashboard under Webhooks.
- * Listen for: checkout.session.completed, checkout.session.expired
- */
-export const stripeWebhook = onRequest(
-  { secrets: [stripeSecretKey, stripeWebhookSecret] },
-  async (req, res) => {
-    const sig = req.headers['stripe-signature'] as string;
-    let event: Stripe.Event;
+  const { bookingId } = request.data;
+  if (!bookingId) {
+    throw new HttpsError('invalid-argument', 'Booking ID is required.');
+  }
 
-    try {
-      event = stripe().webhooks.constructEvent(
-        req.rawBody,
-        sig,
-        stripeWebhookSecret.value()
-      );
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('Webhook signature verification failed:', msg);
-      res.status(400).send(`Webhook error: ${msg}`);
-      return;
+  const bookingDoc = await admin.firestore().collection('bookings').doc(bookingId).get();
+  if (!bookingDoc.exists) {
+    throw new HttpsError('not-found', 'Booking not found.');
+  }
+
+  const booking = bookingDoc.data();
+  if (booking?.guestId !== request.auth.uid) {
+    throw new HttpsError('permission-denied', 'Only the guest can pay for this booking.');
+  }
+
+  if (booking?.status !== 'confirmed') {
+    throw new HttpsError('failed-precondition', 'Booking must be confirmed by the host before payment.');
+  }
+
+  const dinnerDoc = await admin.firestore().collection('dinners').doc(booking.dinnerId).get();
+  const dinner = dinnerDoc.data();
+
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+
+  const session = await stripe.checkout.sessions.create({
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: dinner?.title || 'Dinner Seat',
+            description: `Dinner with ${dinner?.host?.displayName || 'Host'}`,
+          },
+          unit_amount: (dinner?.price || 0) * 100,
+        },
+        quantity: booking.guestCount || 1,
+      },
+    ],
+    mode: 'payment',
+    success_url: `${APP_URL.value()}/bookings?payment=success`,
+    cancel_url: `${APP_URL.value()}/bookings?payment=cancelled`,
+    metadata: {
+      bookingId,
+      guestId: request.auth.uid,
+    },
+  });
+
+  await admin.firestore().collection('bookings').doc(bookingId).update({
+    paymentStatus: 'awaiting_payment',
+    stripeSessionId: session.id,
+  });
+
+  return { url: session.url };
+});
+
+export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be signed in.');
+  }
+
+  const { bookingId } = request.data;
+  const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
+  const bookingDoc = await bookingRef.get();
+
+  if (!bookingDoc.exists) throw new HttpsError('not-found', 'Booking not found.');
+  const booking = bookingDoc.data();
+
+  if (booking?.guestId !== request.auth.uid) throw new HttpsError('permission-denied', 'Unauthorized.');
+  if (booking?.status !== 'confirmed') throw new HttpsError('failed-precondition', 'Cannot cancel unconfirmed booking this way.');
+
+  let refunded = false;
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+
+  if (booking?.paymentStatus === 'paid') {
+    const paymentSnap = await admin.firestore().collection('payments')
+      .where('bookingId', '==', bookingId)
+      .limit(1)
+      .get();
+
+    if (!paymentSnap.empty) {
+      const payment = paymentSnap.docs[0].data();
+      if (payment.paymentIntentId) {
+        await stripe.refunds.create({ payment_intent: payment.paymentIntentId });
+        refunded = true;
+      }
     }
+  }
 
-    if (event.type === 'checkout.session.completed') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const { bookingId, guestId } = session.metadata!;
+  const batch = admin.firestore().batch();
+  batch.update(bookingRef, {
+    status: 'cancelled',
+    paymentStatus: refunded ? 'refunded' : booking?.paymentStatus
+  });
 
-      await db.collection('bookings').doc(bookingId).update({
+  const dinnerRef = admin.firestore().collection('dinners').doc(booking?.dinnerId);
+  batch.update(dinnerRef, {
+    guestsCount: admin.firestore.FieldValue.increment(-(booking?.guestCount || 1))
+  });
+
+  await batch.commit();
+
+  // Waitlist logic
+  const waitlistSnap = await admin.firestore().collection('waitlist')
+    .where('dinnerId', '==', booking?.dinnerId)
+    .orderBy('joinedAt', 'asc')
+    .limit(1)
+    .get();
+
+  if (!waitlistSnap.empty) {
+    const entry = waitlistSnap.docs[0].data();
+    await admin.firestore().collection('notifications').doc(entry.userId).collection('items').add({
+      type: 'booking_confirmed',
+      message: `A seat just opened up at a table you were waiting for!`,
+      link: `/dinner/${booking?.dinnerId}`,
+      isRead: false,
+      createdAt: Date.now()
+    });
+    await waitlistSnap.docs[0].ref.delete();
+  }
+
+  return { success: true, refunded };
+});
+
+export const stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  const sig = req.headers['stripe-signature'] as string;
+
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.rawBody, sig, STRIPE_WEBHOOK_SECRET.value());
+  } catch (err: any) {
+    res.status(400).send(`Webhook Error: ${err.message}`);
+    return;
+  }
+
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const bookingId = session.metadata?.bookingId;
+
+    if (bookingId) {
+      await admin.firestore().collection('bookings').doc(bookingId).update({
         paymentStatus: 'paid',
-        paidAt: FieldValue.serverTimestamp()
+        paidAt: Date.now(),
       });
 
-      await db.collection('payments').add({
+      await admin.firestore().collection('payments').add({
         bookingId,
-        guestId,
-        stripeSessionId: session.id,
-        paymentIntentId: session.payment_intent as string | null,
+        guestId: session.metadata?.guestId,
         amount: session.amount_total,
         currency: session.currency,
         status: 'succeeded',
-        createdAt: FieldValue.serverTimestamp()
+        stripeSessionId: session.id,
+        paymentIntentId: session.payment_intent,
+        createdAt: Date.now(),
       });
 
-      // In-app notification to guest
-      await db
-        .collection('notifications')
-        .doc(guestId)
-        .collection('items')
-        .add({
+      // Notify guest
+      const bookingDoc = await admin.firestore().collection('bookings').doc(bookingId).get();
+      const booking = bookingDoc.data();
+      if (booking) {
+        await admin.firestore().collection('notifications').doc(booking.guestId).collection('items').add({
           type: 'booking_confirmed',
-          message: 'Your payment was successful! See you at the table.',
+          message: `Payment successful! Your seat is secured.`,
           link: '/bookings',
           isRead: false,
           createdAt: Date.now()
         });
-    }
-
-    if (event.type === 'checkout.session.expired') {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const bookingId = session.metadata?.bookingId;
-      if (bookingId) {
-        await db.collection('bookings').doc(bookingId).update({
-          paymentStatus: 'unpaid'
-        });
       }
     }
-
-    res.json({ received: true });
   }
-);
 
-/**
- * Callable: cancel a confirmed booking and refund if already paid.
- * Guest-only — validates ownership before proceeding.
- */
-export const cancelBooking = onCall(
-  { secrets: [stripeSecretKey] },
-  async (request) => {
-    const uid = request.auth?.uid;
-    if (!uid) throw new HttpsError('unauthenticated', 'Must be signed in');
-
-    const { bookingId } = request.data as { bookingId: string };
-    if (!bookingId) throw new HttpsError('invalid-argument', 'bookingId is required');
-
-    const bookingRef = db.collection('bookings').doc(bookingId);
-    const bookingSnap = await bookingRef.get();
-    if (!bookingSnap.exists) throw new HttpsError('not-found', 'Booking not found');
-    const booking = bookingSnap.data()!;
-
-    if (booking.guestId !== uid) {
-      throw new HttpsError('permission-denied', 'Not your booking');
-    }
-    if (booking.status !== 'confirmed') {
-      throw new HttpsError('failed-precondition', 'Only confirmed bookings can be cancelled');
-    }
-
-    let refunded = false;
-
-    // Issue refund if the booking was paid
-    if (booking.paymentStatus === 'paid') {
-      const paymentsSnap = await db
-        .collection('payments')
-        .where('bookingId', '==', bookingId)
-        .where('status', '==', 'succeeded')
-        .limit(1)
-        .get();
-
-      if (!paymentsSnap.empty) {
-        const paymentIntentId = paymentsSnap.docs[0].data().paymentIntentId as string | undefined;
-        if (paymentIntentId) {
-          await stripe().refunds.create({ payment_intent: paymentIntentId });
-          refunded = true;
-        }
-      }
-    }
-
-    // Update booking and decrement guestsCount in a batch
-    const batch = db.batch();
-    batch.update(bookingRef, { status: 'cancelled', paymentStatus: refunded ? 'refunded' : booking.paymentStatus });
-
-    const dinnerRef = db.collection('dinners').doc(booking.dinnerId);
-    const dinnerSnap = await dinnerRef.get();
-    if (dinnerSnap.exists) {
-      const currentCount = (dinnerSnap.data()!.guestsCount as number) || 0;
-      const decrement = (booking.guestCount as number) || 1;
-      batch.update(dinnerRef, { guestsCount: Math.max(0, currentCount - decrement) });
-    }
-    await batch.commit();
-
-    // Notify the guest
-    await db.collection('notifications').doc(uid).collection('items').add({
-      type: 'booking_cancelled',
-      message: refunded
-        ? `Your booking has been cancelled and a refund has been initiated.`
-        : `Your booking has been cancelled.`,
-      link: '/bookings',
-      isRead: false,
-      createdAt: Date.now()
-    });
-
-    // Notify the first person on the waitlist
-    const waitlistSnap = await db
-      .collection('waitlist')
-      .where('dinnerId', '==', booking.dinnerId)
-      .orderBy('joinedAt', 'asc')
-      .limit(1)
-      .get();
-
-    if (!waitlistSnap.empty && dinnerSnap.exists) {
-      const first = waitlistSnap.docs[0];
-      const entry = first.data();
-      await Promise.all([
-        db.collection('notifications').doc(entry.userId).collection('items').add({
-          type: 'booking_confirmed',
-          message: `A seat just opened at "${dinnerSnap.data()!.title}" — you're first on the waitlist!`,
-          link: `/dinner/${booking.dinnerId}`,
-          isRead: false,
-          createdAt: Date.now()
-        }),
-        first.ref.delete()
-      ]);
-    }
-
-    return { success: true, refunded };
-  }
-);
+  res.json({ received: true });
+});

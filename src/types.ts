@@ -35,14 +35,16 @@ export interface Conversation {
   createdAt: number;
 }
 
-
+export interface UserProfile {
   id: string;
+  email?: string;
   displayName: string;
   photoURL: string;
   bio?: string;
   city?: string;
   interests?: string[];
   isVerified?: boolean;
+  onboardingComplete?: boolean;
   dietaryPreferences?: string[];
   favorites?: string[]; // IDs of favorite dinners
 }

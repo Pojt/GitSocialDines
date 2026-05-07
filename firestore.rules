@@ -22,20 +22,22 @@ service cloud.firestore {
 
     match /users/{userId} {
       function isValidUser(data) {
-        return data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 100
-            && data.photoURL is string && data.photoURL.size() <= 600
-            && (data.get('bio', '') is string && data.get('bio', '').size() <= 1500)
-            && (data.get('city', '') is string && data.get('city', '').size() <= 150)
-            && (data.get('interests', []) is list && data.get('interests', []).size() <= 30)
-            && data.isVerified is bool
-            && (data.get('createdAt', 0) is number);
+        return data.get('displayName', '') is string && data.get('displayName', '').size() <= 100
+            && data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 600
+            && data.get('email', '') is string && data.get('email', '').size() <= 150
+            && data.get('bio', '') is string && data.get('bio', '').size() <= 1500
+            && data.get('city', '') is string && data.get('city', '').size() <= 150
+            && data.get('interests', []) is list && data.get('interests', []).size() <= 30
+            && data.get('isVerified', false) is bool
+            && data.get('onboardingComplete', false) is bool
+            && data.get('favorites', []) is list && data.get('favorites', []).size() <= 100
+            && data.get('createdAt', 0) is number;
       }
 
       allow read: if true;
       allow create: if isOwner(userId) && isValidUser(incoming());
       allow update: if isOwner(userId) && isValidUser(incoming()) && (
-        // Only allow changing profile fields, NOT self-verifying once established (prototype exception for now)
-        incoming().diff(existing()).affectedKeys().hasAny(['displayName', 'bio', 'city', 'interests', 'photoURL', 'isVerified'])
+        incoming().diff(existing()).affectedKeys().hasAny(['displayName', 'bio', 'city', 'interests', 'photoURL', 'isVerified', 'favorites', 'email', 'onboardingComplete'])
       );
     }
 
@@ -49,19 +51,15 @@ service cloud.firestore {
             && data.hostId == request.auth.uid
             && data.date is number && data.date > 0
             && (data.get('tags', []) is list && data.get('tags', []).size() <= 15)
-            && (data.get('images', []) is list && data.get('images', []).size() <= 5)
+            && (data.get('images', []) is list && data.get('images', []).size() <= 10)
             && (data.get('vibe', '') is string && data.get('vibe', '').size() <= 50);
       }
 
       allow read: if true; 
-      allow create: if isVerifiedUser() && isValidDinner(incoming()) && isValidId(dinnerId);
+      allow create: if isSignedIn() && isValidDinner(incoming()) && isValidId(dinnerId);
       allow update: if isSignedIn() && (
-        // Action: Host Edit
         (isOwner(existing().hostId) && isValidDinner(incoming()) && incoming().hostId == existing().hostId) ||
-        // Action: Guest Intake (Atomic increment check)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['guestsCount']) && incoming().guestsCount == existing().guestsCount + 1) ||
-        // Action: Booking cancellation (decrement)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['guestsCount']) && incoming().guestsCount < existing().guestsCount && incoming().guestsCount >= 0)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['guestsCount']) && incoming().guestsCount >= 0)
       );
       allow delete: if isSignedIn() && isOwner(existing().hostId);
     }
@@ -73,83 +71,55 @@ service cloud.firestore {
             && isValidId(data.hostId)
             && data.status in ['pending', 'confirmed', 'rejected', 'cancelled']
             && data.guestCount is number && data.guestCount >= 1 && data.guestCount <= 10
-            && data.guestId != data.hostId
-            && (data.get('message', '') is string && data.get('message', '').size() <= 1000);
+            && data.guestId != data.hostId;
       }
 
       allow read: if isSignedIn() && (isOwner(resource.data.guestId) || isOwner(resource.data.hostId));
-      
-      allow create: if isSignedIn() && isValidBooking(incoming()) && isValidId(bookingId) &&
-        exists(/databases/$(database)/documents/dinners/$(incoming().dinnerId));
-
+      allow create: if isSignedIn() && isValidBooking(incoming()) && isValidId(bookingId);
       allow update: if isSignedIn() && (
-        // Action: Host Confirmation/Rejection
         (isOwner(existing().hostId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status in ['confirmed', 'rejected']) ||
-        // Action: Guest Cancellation
         (isOwner(existing().guestId) && incoming().diff(existing()).affectedKeys().hasOnly(['status']) && incoming().status == 'cancelled')
       );
-      allow delete: if false; // Prefer soft-cancel
-    }
-
-    match /reviews/{reviewId} {
-      function isValidReview(data) {
-        return data.rating is number && data.rating >= 1 && data.rating <= 5
-            && data.content is string && data.content.size() <= 2000
-            && data.authorId == request.auth.uid
-            && isValidId(data.dinnerId)
-            && isValidId(reviewId);
-      }
-
-      allow read: if true;
-      allow create: if isSignedIn() && isValidReview(incoming()) &&
-        exists(/databases/$(database)/documents/confirmedAttendances/$(request.auth.uid + "_" + incoming().dinnerId));
     }
 
     match /confirmedAttendances/{attendanceId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    match /conversations/{conversationId} {
-      allow read, update: if isSignedIn() && resource.data.participants.hasAny([request.auth.uid]);
-      allow create: if isSignedIn() && incoming().participants.hasAny([request.auth.uid]);
-
-      match /messages/{messageId} {
-        allow read: if isSignedIn() &&
-          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
-        allow create: if isSignedIn() &&
-          incoming().senderId == request.auth.uid &&
-          get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants.hasAny([request.auth.uid]);
-        allow update, delete: if false;
-      }
-    }
-
-    match /waitlist/{entryId} {
-      allow read: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || resource.data.hostId == request.auth.uid
-      );
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow delete: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || resource.data.hostId == request.auth.uid
-      );
-      allow update: if false;
     }
 
     match /notifications/{userId}/items/{notifId} {
       allow read, update: if isOwner(userId);
-      allow create: if isSignedIn(); // any auth user can send a notification to another user
-      allow delete: if false;
+      allow create: if isSignedIn();
+    }
+
+    match /waitlist/{entryId} {
+      allow read: if isSignedIn() && (isOwner(resource.data.userId) || isOwner(resource.data.hostId));
+      allow create: if isSignedIn() && isOwner(incoming().userId);
+      allow delete: if isSignedIn() && (isOwner(existing().userId) || isOwner(existing().hostId));
+    }
+
+    match /conversations/{conversationId} {
+      allow read, update: if isSignedIn() && request.auth.uid in resource.data.participants;
+      allow create: if isSignedIn() && request.auth.uid in incoming().participants;
+      
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        allow create: if isSignedIn() && incoming().senderId == request.auth.uid;
+      }
     }
 
     match /payments/{paymentId} {
       allow read: if isSignedIn() && resource.data.guestId == request.auth.uid;
-      allow write: if false; // Admin SDK (Cloud Functions) only
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && 
+        exists(/databases/$(database)/documents/confirmedAttendances/$(request.auth.uid + "_" + incoming().dinnerId));
     }
 
     match /mail/{mailId} {
-      allow create: if isSignedIn(); // Allow authenticated users to queue system emails
-      allow read, update, delete: if false; // Only system/admin should process
+      allow create: if isSignedIn();
     }
   }
 }

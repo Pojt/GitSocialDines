@@ -1,12 +1,12 @@
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  doc,
-  addDoc,
-  updateDoc,
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  getDoc, 
+  doc, 
+  addDoc, 
+  updateDoc, 
   setDoc,
   deleteDoc,
   serverTimestamp,
@@ -28,6 +28,30 @@ export const dbService = {
     if (filters?.soloFriendly) {
       q = query(q, where('soloFriendly', '==', true));
     }
+
+    try {
+      const querySnapshot = await getDocs(q);
+      const dinners: Dinner[] = [];
+      
+      for (const d of querySnapshot.docs) {
+        const dinnerData = d.data() as Omit<Dinner, 'id'>;
+        const hostDoc = await getDoc(doc(db, 'users', dinnerData.hostId));
+        dinners.push({
+          id: d.id,
+          ...dinnerData,
+          host: hostDoc.exists() ? { id: hostDoc.id, ...hostDoc.data() } as UserProfile : undefined
+        });
+      }
+      return dinners;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, 'dinners');
+      return [];
+    }
+  },
+
+  async getUpcomingDinners() {
+    const dinnersRef = collection(db, 'dinners');
+    const q = query(dinnersRef, where('date', '>', Date.now() - 3600000), orderBy('date', 'asc'));
 
     try {
       const querySnapshot = await getDocs(q);
@@ -162,6 +186,7 @@ export const dbService = {
     try {
       const docRef = await addDoc(collection(db, 'bookings'), {
         ...booking,
+        paymentStatus: 'unpaid',
         createdAt: serverTimestamp()
       });
 
@@ -391,6 +416,15 @@ export const dbService = {
     }
   },
 
+  async checkAttendance(userId: string, dinnerId: string): Promise<boolean> {
+    try {
+      const snap = await getDoc(doc(db, 'confirmedAttendances', `${userId}_${dinnerId}`));
+      return snap.exists();
+    } catch (error) {
+      return false;
+    }
+  },
+
   async getUserWaitlist(userId: string): Promise<WaitlistEntry[]> {
     try {
       const q = query(collection(db, 'waitlist'), where('userId', '==', userId), orderBy('joinedAt', 'desc'));
@@ -494,7 +528,10 @@ export const dbService = {
       const existingBooking = existingBookingSnap.data() as Booking;
 
       const batch = writeBatch(db);
-      batch.update(bookingRef, { status });
+      batch.update(bookingRef, { 
+        status,
+        paymentStatus: status === 'confirmed' ? 'unpaid' : undefined 
+      });
 
       if (status === 'confirmed' && newGuestCount !== undefined) {
         const dinnerRef = doc(db, 'dinners', dinnerId);
@@ -569,7 +606,7 @@ export const dbService = {
           await this.createNotification(existingBooking.guestId, {
             type: status === 'confirmed' ? 'booking_confirmed' : 'booking_rejected',
             message: status === 'confirmed'
-              ? `Your booking for "${dinner.title}" has been confirmed!`
+              ? `Your booking for "${dinner.title}" has been confirmed! Please complete your payment to secure your seat.`
               : `Your booking request for "${dinner.title}" was not accepted.`,
             link: '/bookings'
           });

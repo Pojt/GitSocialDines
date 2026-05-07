@@ -60,93 +60,106 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
       onClick={() => navigate(`/dinner/${dinner.id}`)}
-      className="group bg-white rounded-[32px] p-5 card-shadow border border-brand-light flex flex-col h-full hover:translate-y-[-4px] transition-all duration-300 cursor-pointer"
+      className="group bg-white rounded-[40px] p-4 card-shadow border border-brand-light flex flex-col h-full hover:translate-y-[-8px] transition-all duration-500 cursor-pointer overflow-hidden"
     >
-      <div className="relative h-48 w-full rounded-[24px] bg-stone-200 mb-4 overflow-hidden">
+      <div className="relative h-64 w-full rounded-[32px] bg-stone-200 mb-5 overflow-hidden">
+        {/* The Menu takes center stage */}
         <img 
           src={dinner.images[0] || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80'} 
           alt={dinner.title}
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+          className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+        
+        {/* Host Avatar on image */}
+        <div className="absolute bottom-4 right-4 z-10 w-12 h-12 rounded-[18px] border-2 border-white shadow-xl overflow-hidden bg-stone-100">
+           <img 
+             src={dinner.host?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dinner.hostId}`} 
+             className="w-full h-full object-cover" 
+             alt={dinner.host?.displayName} 
+           />
+        </div>
+        
+        {/* Overlay for food/dinner title */}
+        <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/80 via-black/20 to-transparent">
+           <div className="flex justify-between items-end">
+              <div className="max-w-[80%]">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70 mb-1">In {dinner.locationName || dinner.host?.city?.split(' ')[0]}</p>
+                <h3 className="serif text-xl font-bold text-white leading-tight">
+                  {dinner.title}
+                </h3>
+              </div>
+           </div>
+        </div>
         
         {/* Heart icon button */}
         <button 
           onClick={handleFavoriteClick}
-          className={`absolute top-4 right-4 p-2.5 rounded-full backdrop-blur-md transition-all ${isFavorite ? 'bg-brand text-white' : 'bg-white/40 text-white hover:bg-white/60'}`}
+          className={`absolute top-4 left-4 p-2.5 rounded-full backdrop-blur-md transition-all ${isFavorite ? 'bg-brand text-white' : 'bg-white/20 text-white hover:bg-white/40'}`}
         >
           <Heart size={18} fill={isFavorite ? "currentColor" : "none"} strokeWidth={2.5} />
         </button>
 
-        <div className="absolute bottom-3 left-4 flex gap-2">
-          <span className="bg-white/90 backdrop-blur px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider text-brand">
-            {dinner.vibe}
-          </span>
-          {distanceText && (
-            <span className="bg-ink text-white px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
-              {distanceText} away
-            </span>
-          )}
-          {dinner.guestsMax - dinner.guestsCount <= 2 && (
-            <span className="bg-white/90 backdrop-blur px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider text-orange-600">
-              {dinner.guestsMax - dinner.guestsCount} Seats Left
-            </span>
-          )}
-          {isHost && (
-            <Link 
-              to={`/host/edit/${dinner.id}`}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-stone-800 text-white px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider hover:bg-brand transition-colors"
-            >
-              Edit
-            </Link>
-          )}
+        {/* Personality Badge (Vibe) */}
+        <div className="absolute top-4 right-4">
+           <span className="bg-brand text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
+             {dinner.vibe}
+           </span>
         </div>
       </div>
       
-      <div className="flex flex-col flex-1">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className="serif text-2xl font-semibold text-ink leading-tight">
-            {dinner.title}
-          </h3>
-          <span className="text-lg font-medium text-brand">${dinner.price}</span>
-        </div>
-        
-        <div 
-          onClick={(e) => {
-            e.stopPropagation();
-            if (dinner.hostId) navigate(`/host/${dinner.hostId}`);
-          }}
-          className="flex items-center gap-2 mb-4 hover:opacity-70 transition-opacity"
-        >
-          <img 
-            src={dinner.host?.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Host'} 
-            className="w-6 h-6 rounded-full bg-stone-200 object-cover"
-            alt={dinner.host?.displayName}
-          />
+      <div className="px-2 flex flex-col flex-1">
+        <div className="flex items-center gap-3 mb-4">
           <div className="flex-1 min-w-0">
-             <p className="text-sm font-semibold text-stone-800 truncate">
-               {dinner.host?.displayName} {dinner.host?.isVerified && <span className="text-brand">✓</span>}
-             </p>
-             <p className="text-[10px] text-stone-500 uppercase tracking-widest font-bold flex items-center gap-1">
-               <MapPin size={10} className="text-stone-300" />
-               {dinner.locationName || dinner.host?.city?.split(' ')[0]} 
-               {distanceText && <span className="text-brand ml-1">• {distanceText} away</span>}
+             <div className="flex items-center justify-between mb-1">
+                <span className="text-lg font-serif font-black text-ink truncate">
+                  {dinner.cuisine} with {dinner.host?.displayName}
+                </span>
+                <span className="text-brand font-black text-sm">${dinner.price}</span>
+             </div>
+             <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">
+                {distanceText ? `${distanceText} away` : 'Nearby'} • {dinner.vibe} Atmosphere
              </p>
           </div>
         </div>
 
-        <div className="mt-auto flex flex-wrap gap-2">
-          {dinner.dietaryOptions?.slice(0, 2).map(opt => (
-            <span key={opt} className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border border-emerald-100 flex items-center gap-1">
-              <span className="w-1 h-1 bg-emerald-400 rounded-full"></span>
-              {opt}
-            </span>
-          ))}
-          {dinner.tags?.slice(0, 1).map(tag => (
-            <span key={tag} className="vibe-tag">#{tag}</span>
-          ))}
-          {dinner.cuisine !== 'All' && <span className="vibe-tag">{dinner.cuisine}</span>}
+        {/* Shared Interests */}
+        {profile?.interests && dinner.host?.interests && (
+          <div className="mb-4">
+            <div className="flex flex-wrap gap-1.5">
+              {dinner.host.interests.slice(0, 3).map(interest => {
+                const isMatch = profile.interests?.includes(interest);
+                return (
+                  <span 
+                    key={interest} 
+                    className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                      isMatch 
+                      ? 'bg-brand/10 border-brand text-brand' 
+                      : 'bg-stone-50 border-stone-100 text-stone-400'
+                    }`}
+                  >
+                    {isMatch && '✨ '}{interest}
+                  </span>
+                );
+              })}
+              {dinner.host.interests.length > 3 && (
+                <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-stone-50 border border-stone-100 text-stone-400">
+                  +{dinner.host.interests.length - 3} More
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-auto pt-4 border-t border-brand-light flex items-center justify-between">
+           <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">
+                 {dinner.guestsMax - dinner.guestsCount} Seats Left
+              </span>
+           </div>
+           <span className="text-[10px] font-black uppercase tracking-widest text-brand group-hover:translate-x-1 transition-transform">
+              Join Table →
+           </span>
         </div>
       </div>
     </motion.div>
