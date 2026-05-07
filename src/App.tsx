@@ -22,8 +22,11 @@ import { seedDB } from './lib/seedData';
 import { APIProvider } from '@vis.gl/react-google-maps';
 import { ToastProvider } from './ToastContext';
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
-const hasValidKey = Boolean(GOOGLE_MAPS_API_KEY) && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY';
+const API_KEY =
+  process.env.GOOGLE_MAPS_PLATFORM_KEY ||
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_PLATFORM_KEY ||
+  '';
+const hasValidKey = Boolean(API_KEY) && API_KEY !== 'YOUR_API_KEY';
 
 export default function App() {
   useEffect(() => {
@@ -83,7 +86,7 @@ export default function App() {
   }
 
   return (
-    <APIProvider apiKey={GOOGLE_MAPS_API_KEY} version="weekly">
+    <APIProvider apiKey={API_KEY} version="weekly">
       <ToastProvider>
         <AuthProvider>
           <Router>

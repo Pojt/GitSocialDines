@@ -22,9 +22,12 @@ import {
   CreditCard
 } from 'lucide-react';
 
+import { useToast } from '../ToastContext';
+
 export const DinnerDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { user, profile } = useAuth();
+  const { showToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const [dinner, setDinner] = useState<Dinner | null>(null);
@@ -81,8 +84,9 @@ export const DinnerDetail: React.FC = () => {
       const createSession = httpsCallable<{ bookingId: string }, { url: string }>(fns, 'createCheckoutSession');
       const result = await createSession({ bookingId: existingBooking.id });
       window.location.href = result.data.url;
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      showToast(err.message || 'Payment initiation failed', 'error');
       setIsSubmitting(false);
     }
   };
@@ -117,9 +121,11 @@ export const DinnerDetail: React.FC = () => {
         message,
         guestCount
       });
+      showToast('Booking request sent!', 'success');
       setBookingStep('success');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      showToast(err.message || 'Booking failed', 'error');
     } finally {
       setIsSubmitting(false);
     }

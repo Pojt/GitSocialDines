@@ -39,8 +39,8 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
   }
 
   const { bookingId } = request.data;
-  if (!bookingId) {
-    throw new HttpsError('invalid-argument', 'Booking ID is required.');
+  if (!bookingId || typeof bookingId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Valid Booking ID is required.');
   }
 
   const bookingDoc = await admin.firestore().collection('bookings').doc(bookingId).get();
@@ -57,6 +57,10 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
     throw new HttpsError('failed-precondition', 'Booking must be confirmed by the host before payment.');
   }
 
+  if (booking?.paymentStatus === 'paid') {
+    throw new HttpsError('already-exists', 'Booking is already paid.');
+  }
+
   const dinnerDoc = await admin.firestore().collection('dinners').doc(booking.dinnerId).get();
   const dinner = dinnerDoc.data();
 
@@ -71,7 +75,7 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
     throw new HttpsError('failed-precondition', 'This table is already full.');
   }
 
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2025-02-24.acacia' });
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
@@ -81,9 +85,9 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
           currency: 'usd',
           product_data: {
             name: dinner?.title || 'Dinner Seat',
-            description: `Dinner with ${dinner?.host?.displayName || 'Host'}`,
+            description: `Hosted by ${dinner?.hostId}`,
           },
-          unit_amount: (dinner?.price || 0) * 100,
+          unit_amount: Math.round((dinner?.price || 0) * 100),
         },
         quantity: booking.guestCount || 1,
       },
@@ -115,7 +119,10 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   }
 
   const { bookingId } = request.data;
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
+  if (!bookingId || typeof bookingId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Valid Booking ID is required.');
+  }
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2025-02-24.acacia' });
 
   const result = await admin.firestore().runTransaction(async (transaction) => {
     const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
@@ -163,16 +170,19 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
     });
 
     // Notify waitlist atomically
-    const waitlistSnap = await transaction.get(
-      admin.firestore().collection('waitlist')
+    const waitlistQuery = admin.firestore().collection('waitlist')
         .where('dinnerId', '==', booking?.dinnerId)
         .orderBy('joinedAt', 'asc')
-        .limit(1)
-    );
+        .limit(1);
+    
+    const waitlistSnap = await waitlistQuery.get();
 
     if (!waitlistSnap.empty) {
       const waitlistDoc = waitlistSnap.docs[0];
       const entry = waitlistDoc.data();
+      
+      // We check the document in the transaction to prevent race conditions
+      await transaction.get(waitlistDoc.ref);
       
       const notifRef = admin.firestore().collection('notifications').doc(entry.userId).collection('items').doc();
       transaction.set(notifRef, {
@@ -189,8 +199,89 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   return { success: true, refunded };
 });
 
+export const updateBookingStatus = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be signed in.');
+  }
+
+  if (!(await checkRateLimit(request.auth.uid, 'updateBookingStatus'))) {
+    throw new HttpsError('resource-exhausted', 'Slow down.');
+  }
+
+  const { bookingId, status, dinnerId } = request.data;
+  if (!bookingId || !status || !dinnerId) {
+    throw new HttpsError('invalid-argument', 'Missing required fields.');
+  }
+
+  return await admin.firestore().runTransaction(async (transaction) => {
+    const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
+    const bookingSnap = await transaction.get(bookingRef);
+    if (!bookingSnap.exists) throw new HttpsError('not-found', 'Booking not found');
+    const booking = bookingSnap.data();
+
+    const dinnerRef = admin.firestore().collection('dinners').doc(dinnerId);
+    const dinnerSnap = await transaction.get(dinnerRef);
+    if (!dinnerSnap.exists) throw new HttpsError('not-found', 'Dinner not found');
+    const dinner = dinnerSnap.data();
+
+    // Permission check: only host can confirm/reject, only guest can cancel
+    if (status === 'confirmed' || status === 'rejected') {
+      if (booking?.hostId !== request.auth?.uid) throw new HttpsError('permission-denied', 'Only host can change status.');
+    } else if (status === 'cancelled') {
+      if (booking?.guestId !== request.auth?.uid) throw new HttpsError('permission-denied', 'Only guest can cancel.');
+    }
+
+    const currentGuests = dinner.guestsCount || 0;
+    const guestsMax = dinner.guestsMax || 0;
+    const bookingGuestCount = booking?.guestCount || 1;
+
+    // Transition logic
+    if (status === 'confirmed' && booking?.status !== 'confirmed') {
+      if (currentGuests + bookingGuestCount > guestsMax) {
+        throw new HttpsError('failed-precondition', 'Table is full.');
+      }
+      transaction.update(dinnerRef, { guestsCount: currentGuests + bookingGuestCount });
+      
+      const attendanceRef = admin.firestore().collection('confirmedAttendances').doc(`${booking?.guestId}_${dinnerId}`);
+      transaction.set(attendanceRef, { guestId: booking?.guestId, dinnerId, confirmedAt: Date.now() });
+    }
+
+    if ((status === 'cancelled' || status === 'rejected') && booking?.status === 'confirmed') {
+      transaction.update(dinnerRef, { guestsCount: Math.max(0, currentGuests - bookingGuestCount) });
+      
+      // Notify waitlist if spot opened
+      const waitlistSnap = await admin.firestore().collection('waitlist')
+        .where('dinnerId', '==', dinnerId)
+        .orderBy('joinedAt', 'asc')
+        .limit(1)
+        .get();
+
+      if (!waitlistSnap.empty) {
+        const entry = waitlistSnap.docs[0];
+        const entryData = entry.data();
+        const notifRef = admin.firestore().collection('notifications').doc(entryData.userId).collection('items').doc();
+        transaction.set(notifRef, {
+          type: 'booking_confirmed',
+          message: `A seat just opened up at "${dinner.title}"!`,
+          link: `/dinner/${dinnerId}`,
+          isRead: false,
+          createdAt: Date.now()
+        });
+        transaction.delete(entry.ref);
+      }
+    }
+
+    transaction.update(bookingRef, { 
+      status,
+      updatedAt: Date.now()
+    });
+
+    return { success: true };
+  });
+});
+
 export const stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2025-02-24.acacia' });
   const sig = req.headers['stripe-signature'] as string;
 
   let event;

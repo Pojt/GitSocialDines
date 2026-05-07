@@ -23,7 +23,7 @@ export const dbService = {
     const dinnersRef = collection(db, 'dinners');
     let q = query(dinnersRef, orderBy('date', 'asc'));
 
-    if (filters?.cuisine) {
+    if (filters?.cuisine && filters.cuisine !== 'All') {
       q = query(q, where('cuisine', '==', filters.cuisine));
     }
     if (filters?.soloFriendly) {
@@ -56,7 +56,7 @@ export const dbService = {
 
   async getUpcomingDinners() {
     const dinnersRef = collection(db, 'dinners');
-    const q = query(dinnersRef, where('date', '>', Date.now() - 3600000), orderBy('date', 'asc'));
+    const q = query(dinnersRef, where('date', '>', Date.now() - 3600000), orderBy('date', 'asc'), limit(6));
 
     try {
       const querySnapshot = await getDocs(q);
@@ -79,9 +79,12 @@ export const dbService = {
   async getBatchUsers(userIds: string[]): Promise<Record<string, UserProfile>> {
     if (!userIds || userIds.length === 0) return {};
     
+    const validUserIds = userIds.filter(id => id && id.length > 0);
+    if (validUserIds.length === 0) return {};
+
     const chunks: string[][] = [];
-    for (let i = 0; i < userIds.length; i += 10) {
-      chunks.push(userIds.slice(i, i + 10));
+    for (let i = 0; i < validUserIds.length; i += 10) {
+      chunks.push(validUserIds.slice(i, i + 10));
     }
 
     const results: Record<string, UserProfile> = {};
@@ -534,14 +537,24 @@ export const dbService = {
     try {
       if (!dinnerIds || dinnerIds.length === 0) return [];
       const dinnersRef = collection(db, 'dinners');
-      const q = query(dinnersRef, where('__name__', 'in', dinnerIds.slice(0, 10))); // Limitation of 10 for 'in'
-      const snap = await getDocs(q);
-      const dinners = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Dinner));
       
-      return await Promise.all(dinners.map(async d => ({
+      const dinners: Dinner[] = [];
+      for (let i = 0; i < dinnerIds.length; i += 10) {
+        const chunk = dinnerIds.slice(i, i + 10);
+        const q = query(dinnersRef, where('__name__', 'in', chunk));
+        const snap = await getDocs(q);
+        snap.forEach(doc => {
+          dinners.push({ id: doc.id, ...doc.data() } as Dinner);
+        });
+      }
+      
+      const hostIds = Array.from(new Set(dinners.map(d => d.hostId)));
+      const hosts = await this.getBatchUsers(hostIds);
+      
+      return dinners.map(d => ({
         ...d,
-        host: await this.getUserProfile(d.hostId)
-      })));
+        host: hosts[d.hostId]
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.GET, 'dinners');
       return [];
@@ -615,87 +628,12 @@ export const dbService = {
   },
 
   async updateBookingStatus(bookingId: string, status: Booking['status'], dinnerId: string) {
-    const { runTransaction } = await import('firebase/firestore');
-    
     try {
-      await runTransaction(db, async (transaction) => {
-        const bookingRef = doc(db, 'bookings', bookingId);
-        const bookingSnap = await transaction.get(bookingRef);
-        
-        if (!bookingSnap.exists()) throw new Error("Booking not found");
-        const booking = bookingSnap.data() as Booking;
-        
-        const dinnerRef = doc(db, 'dinners', dinnerId);
-        const dinnerSnap = await transaction.get(dinnerRef);
-        
-        if (!dinnerSnap.exists()) throw new Error("Dinner not found");
-        const dinner = dinnerSnap.data() as Dinner;
-
-        const currentGuests = dinner.guestsCount || 0;
-        const guestsMax = dinner.guestsMax || 0;
-        const bookingGuestCount = booking.guestCount || 1;
-
-        // Transitions logic
-        if (status === 'confirmed' && booking.status !== 'confirmed') {
-          if (currentGuests + bookingGuestCount > guestsMax) {
-            throw new Error("No more seats available at this table.");
-          }
-          transaction.update(dinnerRef, { guestsCount: currentGuests + bookingGuestCount });
-          
-          const attendanceRef = doc(db, 'confirmedAttendances', `${booking.guestId}_${dinnerId}`);
-          transaction.set(attendanceRef, { guestId: booking.guestId, dinnerId, confirmedAt: Date.now() });
-        }
-
-        if (status === 'cancelled' && booking.status === 'confirmed') {
-          transaction.update(dinnerRef, { guestsCount: Math.max(0, currentGuests - bookingGuestCount) });
-        }
-
-        transaction.update(bookingRef, { 
-          status,
-          paymentStatus: status === 'confirmed' ? 'unpaid' : booking.paymentStatus,
-          updatedAt: Date.now()
-        });
-      });
-
-      // Handle notifications and emails outside transaction
-      const bookingRef = doc(db, 'bookings', bookingId);
-      const bookingSnap = await getDoc(bookingRef);
-      if (!bookingSnap.exists()) return true;
-      const booking = bookingSnap.data() as Booking;
-      
-      const [guest, dinner] = await Promise.all([
-        this.getUserProfile(booking.guestId),
-        this.getDinner(dinnerId)
-      ]);
-
-      if (dinner) {
-        if (status === 'confirmed' && guest?.email) {
-          await this.queueEmail(
-            [guest.email],
-            `Booking Confirmed! ${dinner.title}`,
-            `Great news! Your booking for ${dinner.title} has been confirmed.`,
-            `<div style="font-family: sans-serif; color: #1c1917;">
-              <h2 style="color: #61694b;">You're in!</h2>
-              <p>Hi ${guest.displayName},</p>
-              <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
-              <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
-                <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
-              </div>
-            </div>`
-          );
-        }
-
-        await this.createNotification(booking.guestId, {
-          type: status === 'confirmed' ? 'booking_confirmed' : status === 'cancelled' ? 'booking_cancelled' : 'booking_rejected',
-          message: status === 'confirmed'
-            ? `Your booking for "${dinner.title}" has been confirmed!`
-            : status === 'cancelled'
-            ? `A booking for "${dinner.title}" has been cancelled.`
-            : `Your booking request for "${dinner.title}" was not accepted.`,
-          link: '/bookings'
-        });
-      }
-
+      const { getFunctions, httpsCallable } = await import('firebase/functions');
+      const { app } = await import('./firebase');
+      const fns = getFunctions(app);
+      const callStatusUpdate = httpsCallable<{ bookingId: string, status: string, dinnerId: string }, { success: boolean }>(fns, 'updateBookingStatus');
+      await callStatusUpdate({ bookingId, status, dinnerId });
       return true;
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `bookings/${bookingId}`);

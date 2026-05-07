@@ -37,15 +37,21 @@ export const Explore: React.FC = () => {
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
-    const lastDinner = dinners[dinners.length - 1];
-    const moreData = await dbService.getDinners({ 
-      limit: PAGE_SIZE, 
-      startAfter: lastDinner.date 
-    });
-    if (moreData.length < PAGE_SIZE) setHasMore(false);
-    setDinners(prev => [...prev, ...moreData]);
-    setLoadingMore(false);
+    try {
+      setLoadingMore(true);
+      const lastDinner = dinners[dinners.length - 1];
+      const moreData = await dbService.getDinners({ 
+        limit: PAGE_SIZE, 
+        startAfter: lastDinner.date,
+        cuisine: selectedCuisine !== 'All' ? selectedCuisine : undefined
+      });
+      setHasMore(moreData.length === PAGE_SIZE);
+      setDinners(prev => [...prev, ...moreData]);
+    } catch (error) {
+      console.error('Failed to load more:', error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
   
   // Filters
@@ -64,11 +70,16 @@ export const Explore: React.FC = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      setLoading(true);
-      const data = await dbService.getDinners({ limit: PAGE_SIZE });
-      setDinners(data);
-      setHasMore(data.length === PAGE_SIZE);
-      setLoading(false);
+      try {
+        setLoading(true);
+        const data = await dbService.getDinners({ limit: PAGE_SIZE });
+        setDinners(data);
+        setHasMore(data.length === PAGE_SIZE);
+      } catch (error) {
+        console.error('Failed to fetch dinners:', error);
+      } finally {
+        setLoading(false);
+      }
     };
     fetch();
 
@@ -77,6 +88,8 @@ export const Explore: React.FC = () => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(loc);
         setMapCenter([loc.lat, loc.lng]);
+      }, (err) => {
+        console.warn('Geolocation denied or failed:', err);
       });
     }
   }, []);
