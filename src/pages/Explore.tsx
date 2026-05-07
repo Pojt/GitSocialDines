@@ -27,9 +27,26 @@ const VIBES = ['Lively', 'Intimate', 'Deep Conversation', 'Artist Table', 'Festi
 export const Explore: React.FC = () => {
   const [dinners, setDinners] = useState<Dinner[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+
+  const PAGE_SIZE = 9;
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const lastDinner = dinners[dinners.length - 1];
+    const moreData = await dbService.getDinners({ 
+      limit: PAGE_SIZE, 
+      startAfter: lastDinner.date 
+    });
+    if (moreData.length < PAGE_SIZE) setHasMore(false);
+    setDinners(prev => [...prev, ...moreData]);
+    setLoadingMore(false);
+  };
   
   // Filters
   const [selectedCuisine, setSelectedCuisine] = useState('All');
@@ -48,8 +65,9 @@ export const Explore: React.FC = () => {
   useEffect(() => {
     const fetch = async () => {
       setLoading(true);
-      const data = await dbService.getUpcomingDinners();
+      const data = await dbService.getDinners({ limit: PAGE_SIZE });
       setDinners(data);
+      setHasMore(data.length === PAGE_SIZE);
       setLoading(false);
     };
     fetch();
@@ -288,6 +306,17 @@ export const Explore: React.FC = () => {
                 </div>
               )}
             </AnimatePresence>
+            {hasMore && !loading && (
+              <div className="col-span-full flex justify-center mt-12">
+                <button 
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="px-10 py-4 bg-brand text-white rounded-full font-black uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 shadow-xl shadow-brand/20"
+                >
+                  {loadingMore ? 'Preparing more tables...' : 'Load more experiences'}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="h-[60vh] sm:h-[70vh] rounded-[40px] overflow-hidden border border-brand-light card-shadow relative">

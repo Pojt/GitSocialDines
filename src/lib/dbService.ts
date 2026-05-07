@@ -18,7 +18,8 @@ import { db, handleFirestoreError, OperationType } from './firebase';
 import { Dinner, UserProfile, Booking, Review, AppNotification, WaitlistEntry, Conversation, HostAnalytics } from '../types';
 
 export const dbService = {
-  async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean }) {
+  async getDinners(filters?: { cuisine?: string; soloFriendly?: boolean; limit?: number; startAfter?: any }) {
+    const { startAfter: firestoreStartAfter } = await import('firebase/firestore');
     const dinnersRef = collection(db, 'dinners');
     let q = query(dinnersRef, orderBy('date', 'asc'));
 
@@ -28,21 +29,25 @@ export const dbService = {
     if (filters?.soloFriendly) {
       q = query(q, where('soloFriendly', '==', true));
     }
+    if (filters?.startAfter) {
+      q = query(q, firestoreStartAfter(filters.startAfter));
+    }
+    if (filters?.limit) {
+      q = query(q, limit(filters.limit));
+    }
 
     try {
       const querySnapshot = await getDocs(q);
-      const dinners: Dinner[] = [];
+      const dinnersData = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Dinner));
       
-      for (const d of querySnapshot.docs) {
-        const dinnerData = d.data() as Omit<Dinner, 'id'>;
-        const hostDoc = await getDoc(doc(db, 'users', dinnerData.hostId));
-        dinners.push({
-          id: d.id,
-          ...dinnerData,
-          host: hostDoc.exists() ? { id: hostDoc.id, ...hostDoc.data() } as UserProfile : undefined
-        });
-      }
-      return dinners;
+      // Batch fetch hosts
+      const hostIds = Array.from(new Set(dinnersData.map(d => d.hostId)));
+      const hosts = await this.getBatchUsers(hostIds);
+      
+      return dinnersData.map(d => ({
+        ...d,
+        host: hosts[d.hostId]
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'dinners');
       return [];
@@ -55,21 +60,43 @@ export const dbService = {
 
     try {
       const querySnapshot = await getDocs(q);
-      const dinners: Dinner[] = [];
+      const dinnersData = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Dinner));
       
-      for (const d of querySnapshot.docs) {
-        const dinnerData = d.data() as Omit<Dinner, 'id'>;
-        const hostDoc = await getDoc(doc(db, 'users', dinnerData.hostId));
-        dinners.push({
-          id: d.id,
-          ...dinnerData,
-          host: hostDoc.exists() ? { id: hostDoc.id, ...hostDoc.data() } as UserProfile : undefined
-        });
-      }
-      return dinners;
+      // Batch fetch hosts
+      const hostIds = Array.from(new Set(dinnersData.map(d => d.hostId)));
+      const hosts = await this.getBatchUsers(hostIds);
+      
+      return dinnersData.map(d => ({
+        ...d,
+        host: hosts[d.hostId]
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'dinners');
       return [];
+    }
+  },
+
+  async getBatchUsers(userIds: string[]): Promise<Record<string, UserProfile>> {
+    if (!userIds || userIds.length === 0) return {};
+    
+    const chunks: string[][] = [];
+    for (let i = 0; i < userIds.length; i += 10) {
+      chunks.push(userIds.slice(i, i + 10));
+    }
+
+    const results: Record<string, UserProfile> = {};
+    try {
+      await Promise.all(chunks.map(async chunk => {
+        const q = query(collection(db, 'profiles'), where('__name__', 'in', chunk));
+        const snap = await getDocs(q);
+        snap.forEach(d => {
+          results[d.id] = { id: d.id, ...d.data() } as UserProfile;
+        });
+      }));
+      return results;
+    } catch (error) {
+      console.error('Batch user fetch failed:', error);
+      return {};
     }
   },
 
@@ -79,7 +106,7 @@ export const dbService = {
       if (!dinnerDoc.exists()) return null;
       
       const dinnerData = dinnerDoc.data() as Omit<Dinner, 'id'>;
-      const hostDoc = await getDoc(doc(db, 'users', dinnerData.hostId));
+      const hostDoc = await getDoc(doc(db, 'profiles', dinnerData.hostId));
       
       return {
         id: dinnerDoc.id,
@@ -105,12 +132,28 @@ export const dbService = {
 
   async getUserProfile(userId: string): Promise<UserProfile | null> {
     try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (!userDoc.exists()) return null;
-      return { id: userDoc.id, ...userDoc.data() } as UserProfile;
+      // First try users collection (private, only works if owner)
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists()) {
+        return { id: userDoc.id, ...userDoc.data() } as UserProfile;
+      }
+
+      // Fallback to public profile
+      const profileDoc = await getDoc(doc(db, 'profiles', userId));
+      if (!profileDoc.exists()) return null;
+      return { id: profileDoc.id, ...profileDoc.data() } as UserProfile;
     } catch (error) {
-      handleFirestoreError(error, OperationType.GET, `users/${userId}`);
-      return null;
+      // If users/userId fails due to permissions, try profiles
+      try {
+        const profileDoc = await getDoc(doc(db, 'profiles', userId));
+        if (!profileDoc.exists()) return null;
+        return { id: profileDoc.id, ...profileDoc.data() } as UserProfile;
+      } catch (innerError) {
+        handleFirestoreError(innerError, OperationType.GET, `profiles/${userId}`);
+        return null;
+      }
     }
   },
 
@@ -118,13 +161,36 @@ export const dbService = {
     const q = query(collection(db, 'bookings'), where('guestId', '==', userId), orderBy('createdAt', 'desc'));
     try {
       const snapshot = await getDocs(q);
-      const bookings: Booking[] = [];
-      for (const d of snapshot.docs) {
-        const bookingData = d.data() as Omit<Booking, 'id'>;
-        const dinner = await this.getDinner(bookingData.dinnerId);
-        bookings.push({ id: d.id, ...bookingData, dinner: dinner || undefined });
+      const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+      
+      // Batch fetch all dinners for these bookings
+      const dinnerIds = Array.from(new Set(bookingDataList.map(b => b.dinnerId)));
+      const dinnersMap: Record<string, Dinner> = {};
+      
+      if (dinnerIds.length > 0) {
+        // Chunk dinner fetches too
+        for (let i = 0; i < dinnerIds.length; i += 10) {
+          const chunk = dinnerIds.slice(i, i + 10);
+          const dq = query(collection(db, 'dinners'), where('__name__', 'in', chunk));
+          const dSnap = await getDocs(dq);
+          dSnap.forEach(doc => {
+            dinnersMap[doc.id] = { id: doc.id, ...doc.data() } as Dinner;
+          });
+        }
+
+        // Now we need hosts for these dinners
+        const hostIds = Array.from(new Set(Object.values(dinnersMap).map(d => d.hostId)));
+        const hostsMap = await this.getBatchUsers(hostIds);
+        
+        Object.keys(dinnersMap).forEach(id => {
+          dinnersMap[id].host = hostsMap[dinnersMap[id].hostId];
+        });
       }
-      return bookings;
+
+      return bookingDataList.map(b => ({
+        ...b,
+        dinner: dinnersMap[b.dinnerId]
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'bookings');
       return [];
@@ -135,20 +201,28 @@ export const dbService = {
     const q = query(collection(db, 'bookings'), where('hostId', '==', userId), orderBy('createdAt', 'desc'));
     try {
       const snapshot = await getDocs(q);
-      const bookings: Booking[] = [];
-      for (const d of snapshot.docs) {
-        const bookingData = d.data() as Omit<Booking, 'id'>;
-        const dinner = await this.getDinner(bookingData.dinnerId);
-        // We'll also need the guest info
-        const guestDoc = await getDoc(doc(db, 'users', bookingData.guestId));
-        bookings.push({ 
-          id: d.id, 
-          ...bookingData, 
-          dinner: dinner || undefined,
-          guest: guestDoc.exists() ? { id: guestDoc.id, ...guestDoc.data() } as UserProfile : undefined
+      const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+      
+      // Batch fetch dinners
+      const dinnerIds = Array.from(new Set(bookingDataList.map(b => b.dinnerId)));
+      const dinnersMap: Record<string, Dinner> = {};
+      if (dinnerIds.length > 0) {
+        const dq = query(collection(db, 'dinners'), where('__name__', 'in', dinnerIds.slice(0, 10)));
+        const dSnap = await getDocs(dq);
+        dSnap.forEach(doc => {
+          dinnersMap[doc.id] = { id: doc.id, ...doc.data() } as Dinner;
         });
       }
-      return bookings;
+
+      // Batch fetch guests
+      const guestIds = Array.from(new Set(bookingDataList.map(b => b.guestId)));
+      const guestsMap = await this.getBatchUsers(guestIds);
+
+      return bookingDataList.map(b => ({
+        ...b,
+        dinner: dinnersMap[b.dinnerId],
+        guest: guestsMap[b.guestId]
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'bookings');
       return [];
@@ -257,17 +331,16 @@ export const dbService = {
     const q = query(collection(db, 'reviews'), where('targetId', '==', targetId), orderBy('createdAt', 'desc'));
     try {
       const snapshot = await getDocs(q);
-      const reviews: Review[] = [];
-      for (const d of snapshot.docs) {
-        const reviewData = d.data() as Omit<Review, 'id'>;
-        const authorDoc = await getDoc(doc(db, 'users', reviewData.authorId));
-        reviews.push({ 
-          id: d.id, 
-          ...reviewData, 
-          author: authorDoc.exists() ? { id: authorDoc.id, ...authorDoc.data() } as UserProfile : undefined 
-        });
-      }
-      return reviews;
+      const reviewsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Review));
+      
+      // Batch fetch authors
+      const authorIds = Array.from(new Set(reviewsData.map(r => r.authorId)));
+      const authors = await this.getBatchUsers(authorIds);
+      
+      return reviewsData.map(r => ({
+        ...r,
+        author: authors[r.authorId]
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'reviews');
       return [];
@@ -287,7 +360,30 @@ export const dbService = {
 
   async updateUserProfile(userId: string, data: Partial<UserProfile>) {
     try {
-      await updateDoc(doc(db, 'users', userId), data);
+      const { displayName, photoURL, bio, city, interests, isVerified, ...privateData } = data;
+      
+      const publicData = {
+        ...(displayName !== undefined && { displayName }),
+        ...(photoURL !== undefined && { photoURL }),
+        ...(bio !== undefined && { bio }),
+        ...(city !== undefined && { city }),
+        ...(interests !== undefined && { interests }),
+        ...(isVerified !== undefined && { isVerified }),
+      };
+
+      const batch = writeBatch(db);
+      
+      // Update private user record
+      if (Object.keys(data).length > 0) {
+        batch.set(doc(db, 'users', userId), data, { merge: true });
+      }
+
+      // Update public profile record
+      if (Object.keys(publicData).length > 0) {
+        batch.set(doc(db, 'profiles', userId), publicData, { merge: true });
+      }
+
+      await batch.commit();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
     }
@@ -520,97 +616,86 @@ export const dbService = {
     }
   },
 
-  async updateBookingStatus(bookingId: string, status: Booking['status'], dinnerId: string, newGuestCount?: number) {
+  async updateBookingStatus(bookingId: string, status: Booking['status'], dinnerId: string) {
+    const { runTransaction } = await import('firebase/firestore');
+    
     try {
-      const bookingRef = doc(db, 'bookings', bookingId);
-      const existingBookingSnap = await getDoc(bookingRef);
-      if (!existingBookingSnap.exists()) return false;
-      const existingBooking = existingBookingSnap.data() as Booking;
+      await runTransaction(db, async (transaction) => {
+        const bookingRef = doc(db, 'bookings', bookingId);
+        const bookingSnap = await transaction.get(bookingRef);
+        
+        if (!bookingSnap.exists()) throw new Error("Booking not found");
+        const booking = bookingSnap.data() as Booking;
+        
+        const dinnerRef = doc(db, 'dinners', dinnerId);
+        const dinnerSnap = await transaction.get(dinnerRef);
+        
+        if (!dinnerSnap.exists()) throw new Error("Dinner not found");
+        const dinner = dinnerSnap.data() as Dinner;
 
-      const batch = writeBatch(db);
-      batch.update(bookingRef, { 
-        status,
-        paymentStatus: status === 'confirmed' ? 'unpaid' : undefined 
+        const currentGuests = dinner.guestsCount || 0;
+        const guestsMax = dinner.guestsMax || 0;
+        const bookingGuestCount = booking.guestCount || 1;
+
+        // Transitions logic
+        if (status === 'confirmed' && booking.status !== 'confirmed') {
+          if (currentGuests + bookingGuestCount > guestsMax) {
+            throw new Error("No more seats available at this table.");
+          }
+          transaction.update(dinnerRef, { guestsCount: currentGuests + bookingGuestCount });
+          
+          const attendanceRef = doc(db, 'confirmedAttendances', `${booking.guestId}_${dinnerId}`);
+          transaction.set(attendanceRef, { guestId: booking.guestId, dinnerId, confirmedAt: Date.now() });
+        }
+
+        if (status === 'cancelled' && booking.status === 'confirmed') {
+          transaction.update(dinnerRef, { guestsCount: Math.max(0, currentGuests - bookingGuestCount) });
+        }
+
+        transaction.update(bookingRef, { 
+          status,
+          paymentStatus: status === 'confirmed' ? 'unpaid' : booking.paymentStatus,
+          updatedAt: Date.now()
+        });
       });
 
-      if (status === 'confirmed' && newGuestCount !== undefined) {
-        const dinnerRef = doc(db, 'dinners', dinnerId);
-        batch.update(dinnerRef, { guestsCount: newGuestCount });
-        // Write confirmedAttendance so the guest can leave a review
-        const attendanceRef = doc(db, 'confirmedAttendances', `${existingBooking.guestId}_${dinnerId}`);
-        batch.set(attendanceRef, { guestId: existingBooking.guestId, dinnerId, confirmedAt: Date.now() });
-      }
+      // Handle notifications and emails outside transaction
+      const bookingRef = doc(db, 'bookings', bookingId);
+      const bookingSnap = await getDoc(bookingRef);
+      if (!bookingSnap.exists()) return true;
+      const booking = bookingSnap.data() as Booking;
+      
+      const [guest, dinner] = await Promise.all([
+        this.getUserProfile(booking.guestId),
+        this.getDinner(dinnerId)
+      ]);
 
-      if (status === 'cancelled' && existingBooking.status === 'confirmed') {
-        const dinnerSnap = await getDoc(doc(db, 'dinners', dinnerId));
-        if (dinnerSnap.exists()) {
-          const currentCount = (dinnerSnap.data().guestsCount as number) || 0;
-          const decrement = existingBooking.guestCount || 1;
-          batch.update(doc(db, 'dinners', dinnerId), {
-            guestsCount: Math.max(0, currentCount - decrement)
-          });
+      if (dinner) {
+        if (status === 'confirmed' && guest?.email) {
+          await this.queueEmail(
+            [guest.email],
+            `Booking Confirmed! ${dinner.title}`,
+            `Great news! Your booking for ${dinner.title} has been confirmed.`,
+            `<div style="font-family: sans-serif; color: #1c1917;">
+              <h2 style="color: #61694b;">You're in!</h2>
+              <p>Hi ${guest.displayName},</p>
+              <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
+              <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
+                <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
+              </div>
+            </div>`
+          );
         }
-      }
 
-      await batch.commit();
-
-      // After a confirmed booking is cancelled, notify the first person on the waitlist
-      if (status === 'cancelled' && existingBooking.status === 'confirmed') {
-        const waitlistQ = query(
-          collection(db, 'waitlist'),
-          where('dinnerId', '==', dinnerId),
-          orderBy('joinedAt', 'asc'),
-          limit(1)
-        );
-        const waitlistSnap = await getDocs(waitlistQ);
-        if (!waitlistSnap.empty) {
-          const first = waitlistSnap.docs[0];
-          const entry = first.data() as WaitlistEntry;
-          const dinner = await this.getDinner(dinnerId);
-          if (dinner) {
-            await Promise.all([
-              this.createNotification(entry.userId, {
-                type: 'booking_confirmed',
-                message: `A seat just opened at "${dinner.title}" — you're first on the waitlist!`,
-                link: `/dinner/${dinnerId}`
-              }),
-              deleteDoc(first.ref)
-            ]);
-          }
-        }
-      }
-
-      if (status === 'confirmed' || status === 'rejected') {
-        const [guest, dinner] = await Promise.all([
-          this.getUserProfile(existingBooking.guestId),
-          this.getDinner(dinnerId)
-        ]);
-
-        if (guest && dinner) {
-          if (status === 'confirmed' && guest.email) {
-            await this.queueEmail(
-              [guest.email],
-              `Booking Confirmed! ${dinner.title}`,
-              `Great news! Your booking for ${dinner.title} has been confirmed.`,
-              `<div style="font-family: sans-serif; color: #1c1917;">
-                <h2 style="color: #61694b;">You're in!</h2>
-                <p>Hi ${guest.displayName},</p>
-                <p>Your booking for <strong>${dinner.title}</strong> has been <strong>Confirmed</strong>.</p>
-                <div style="background: #61694b; color: white; padding: 30px; border-radius: 20px; text-align: center;">
-                  <h3 style="margin: 0; font-size: 24px;">See you at the table!</h3>
-                </div>
-              </div>`
-            );
-          }
-
-          await this.createNotification(existingBooking.guestId, {
-            type: status === 'confirmed' ? 'booking_confirmed' : 'booking_rejected',
-            message: status === 'confirmed'
-              ? `Your booking for "${dinner.title}" has been confirmed! Please complete your payment to secure your seat.`
-              : `Your booking request for "${dinner.title}" was not accepted.`,
-            link: '/bookings'
-          });
-        }
+        await this.createNotification(booking.guestId, {
+          type: status === 'confirmed' ? 'booking_confirmed' : status === 'cancelled' ? 'booking_cancelled' : 'booking_rejected',
+          message: status === 'confirmed'
+            ? `Your booking for "${dinner.title}" has been confirmed!`
+            : status === 'cancelled'
+            ? `A booking for "${dinner.title}" has been cancelled.`
+            : `Your booking request for "${dinner.title}" was not accepted.`,
+          link: '/bookings'
+        });
       }
 
       return true;

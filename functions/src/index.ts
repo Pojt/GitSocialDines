@@ -36,7 +36,18 @@ export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, as
   const dinnerDoc = await admin.firestore().collection('dinners').doc(booking.dinnerId).get();
   const dinner = dinnerDoc.data();
 
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  if (!dinner) {
+    throw new HttpsError('not-found', 'Dinner not found.');
+  }
+
+  // Pre-payment capacity guard
+  const currentCount = dinner.guestsCount || 0;
+  const maxCount = dinner.guestsMax || 0;
+  if (currentCount >= maxCount) {
+    throw new HttpsError('failed-precondition', 'This table is already full.');
+  }
+
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
 
   const session = await stripe.checkout.sessions.create({
     payment_method_types: ['card'],
@@ -86,7 +97,7 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
   if (booking?.status !== 'confirmed') throw new HttpsError('failed-precondition', 'Cannot cancel unconfirmed booking this way.');
 
   let refunded = false;
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
 
   if (booking?.paymentStatus === 'paid') {
     const paymentSnap = await admin.firestore().collection('payments')
@@ -139,7 +150,7 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
 });
 
 export const stripeWebhook = onRequest({ secrets: [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET] }, async (req, res) => {
-  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2023-10-16' });
+  const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
   const sig = req.headers['stripe-signature'] as string;
 
   let event;

@@ -20,25 +20,25 @@ service cloud.firestore {
 
     // --- Phase 4: Collection Fortress ---
 
+    // Private user data (Email, Favorites, etc)
     match /users/{userId} {
-      function isValidUser(data) {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId);
+    }
+
+    // Public profile data
+    match /profiles/{userId} {
+      function isValidProfile(data) {
         return data.get('displayName', '') is string && data.get('displayName', '').size() <= 100
             && data.get('photoURL', '') is string && data.get('photoURL', '').size() <= 600
-            && data.get('email', '') is string && data.get('email', '').size() <= 150
             && data.get('bio', '') is string && data.get('bio', '').size() <= 1500
             && data.get('city', '') is string && data.get('city', '').size() <= 150
             && data.get('interests', []) is list && data.get('interests', []).size() <= 30
-            && data.get('isVerified', false) is bool
-            && data.get('onboardingComplete', false) is bool
-            && data.get('favorites', []) is list && data.get('favorites', []).size() <= 100
-            && data.get('createdAt', 0) is number;
+            && data.get('isVerified', false) is bool;
       }
 
       allow read: if true;
-      allow create: if isOwner(userId) && isValidUser(incoming());
-      allow update: if isOwner(userId) && isValidUser(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasAny(['displayName', 'bio', 'city', 'interests', 'photoURL', 'isVerified', 'favorites', 'email', 'onboardingComplete'])
-      );
+      allow create, update: if isOwner(userId) && isValidProfile(incoming());
     }
 
     match /dinners/{dinnerId} {

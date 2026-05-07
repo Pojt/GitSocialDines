@@ -84,9 +84,7 @@ export const Bookings: React.FC = () => {
 
   const handleUpdateStatus = async (booking: Booking, status: 'confirmed' | 'rejected') => {
     if (status === 'confirmed') {
-      const currentCount = booking.dinner?.guestsCount || 0;
-      const requestedGuests = booking.guestCount || 1;
-      await dbService.updateBookingStatus(booking.id, 'confirmed', booking.dinnerId, currentCount + requestedGuests);
+      await dbService.updateBookingStatus(booking.id, 'confirmed', booking.dinnerId);
     } else {
       await dbService.updateBookingStatus(booking.id, 'rejected', booking.dinnerId);
     }
