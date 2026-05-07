@@ -1,8 +1,20 @@
 {
   "entities": {
     "User": {
-      "title": "User",
-      "description": "User profile information",
+      "title": "Private User",
+      "description": "Sensitive user information and app state",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "onboardingComplete": { "type": "boolean" },
+        "favorites": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["email"]
+    },
+    "Profile": {
+      "title": "Public Profile",
+      "description": "Publicly visible user profile data",
       "type": "object",
       "properties": {
         "displayName": { "type": "string" },
@@ -10,12 +22,9 @@
         "bio": { "type": "string" },
         "city": { "type": "string" },
         "interests": { "type": "array", "items": { "type": "string" } },
-        "dietaryPreferences": { "type": "array", "items": { "type": "string" } },
-        "favorites": { "type": "array", "items": { "type": "string" } },
-        "isVerified": { "type": "boolean" },
-        "createdAt": { "type": "number" }
+        "isVerified": { "type": "boolean" }
       },
-      "required": ["displayName", "photoURL", "isVerified"]
+      "required": ["displayName"]
     },
     "Dinner": {
       "title": "Dinner",
@@ -94,7 +103,11 @@
   "firestore": {
     "users/{userId}": {
       "schema": "User",
-      "description": "User profiles"
+      "description": "Private user information"
+    },
+    "profiles/{userId}": {
+      "schema": "Profile",
+      "description": "Public user profiles"
     },
     "dinners/{dinnerId}": {
       "schema": "Dinner",

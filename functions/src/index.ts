@@ -9,9 +9,33 @@ const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 const APP_URL = defineString('APP_URL');
 
+// Basic rate limiting helper
+async function checkRateLimit(userId: string, functionName: string, windowMs = 5000) {
+  const rateLimitRef = admin.firestore().collection('rate_limits').doc(`${userId}_${functionName}`);
+  const now = Date.now();
+  
+  const result = await admin.firestore().runTransaction(async (t) => {
+    const doc = await t.get(rateLimitRef);
+    if (doc.exists) {
+      const lastCall = doc.data()?.lastCall || 0;
+      if (now - lastCall < windowMs) {
+        return false;
+      }
+    }
+    t.set(rateLimitRef, { lastCall: now });
+    return true;
+  });
+  
+  return result;
+}
+
 export const createCheckoutSession = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
+  }
+
+  if (!(await checkRateLimit(request.auth.uid, 'createCheckoutSession'))) {
+    throw new HttpsError('resource-exhausted', 'Slow down! Please wait a moment before trying again.');
   }
 
   const { bookingId } = request.data;
@@ -86,18 +110,29 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
     throw new HttpsError('unauthenticated', 'User must be signed in.');
   }
 
+  if (!(await checkRateLimit(request.auth.uid, 'cancelBooking'))) {
+    throw new HttpsError('resource-exhausted', 'Please wait before cancelling again.');
+  }
+
   const { bookingId } = request.data;
-  const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
-  const bookingDoc = await bookingRef.get();
-
-  if (!bookingDoc.exists) throw new HttpsError('not-found', 'Booking not found.');
-  const booking = bookingDoc.data();
-
-  if (booking?.guestId !== request.auth.uid) throw new HttpsError('permission-denied', 'Unauthorized.');
-  if (booking?.status !== 'confirmed') throw new HttpsError('failed-precondition', 'Cannot cancel unconfirmed booking this way.');
-
-  let refunded = false;
   const stripe = new Stripe(STRIPE_SECRET_KEY.value(), { apiVersion: '2024-12-18.acacia' });
+
+  const result = await admin.firestore().runTransaction(async (transaction) => {
+    const bookingRef = admin.firestore().collection('bookings').doc(bookingId);
+    const bookingDoc = await transaction.get(bookingRef);
+
+    if (!bookingDoc.exists) throw new HttpsError('not-found', 'Booking not found.');
+    const booking = bookingDoc.data();
+
+    if (booking?.guestId !== request.auth?.uid) throw new HttpsError('permission-denied', 'Unauthorized.');
+    if (booking?.status !== 'confirmed') throw new HttpsError('failed-precondition', 'Cannot cancel unconfirmed booking this way.');
+
+    // Prepare refund data but don't call stripe inside transaction
+    return { booking, bookingRef };
+  });
+
+  const { booking, bookingRef } = result;
+  let refunded = false;
 
   if (booking?.paymentStatus === 'paid') {
     const paymentSnap = await admin.firestore().collection('payments')
@@ -114,37 +149,42 @@ export const cancelBooking = onCall({ secrets: [STRIPE_SECRET_KEY] }, async (req
     }
   }
 
-  const batch = admin.firestore().batch();
-  batch.update(bookingRef, {
-    status: 'cancelled',
-    paymentStatus: refunded ? 'refunded' : booking?.paymentStatus
-  });
-
-  const dinnerRef = admin.firestore().collection('dinners').doc(booking?.dinnerId);
-  batch.update(dinnerRef, {
-    guestsCount: admin.firestore.FieldValue.increment(-(booking?.guestCount || 1))
-  });
-
-  await batch.commit();
-
-  // Waitlist logic
-  const waitlistSnap = await admin.firestore().collection('waitlist')
-    .where('dinnerId', '==', booking?.dinnerId)
-    .orderBy('joinedAt', 'asc')
-    .limit(1)
-    .get();
-
-  if (!waitlistSnap.empty) {
-    const entry = waitlistSnap.docs[0].data();
-    await admin.firestore().collection('notifications').doc(entry.userId).collection('items').add({
-      type: 'booking_confirmed',
-      message: `A seat just opened up at a table you were waiting for!`,
-      link: `/dinner/${booking?.dinnerId}`,
-      isRead: false,
-      createdAt: Date.now()
+  // Atomic update of status, guest count, and waitlist
+  await admin.firestore().runTransaction(async (transaction) => {
+    transaction.update(bookingRef, {
+      status: 'cancelled',
+      paymentStatus: refunded ? 'refunded' : booking?.paymentStatus,
+      updatedAt: Date.now()
     });
-    await waitlistSnap.docs[0].ref.delete();
-  }
+
+    const dinnerRef = admin.firestore().collection('dinners').doc(booking?.dinnerId);
+    transaction.update(dinnerRef, {
+      guestsCount: admin.firestore.FieldValue.increment(-(booking?.guestCount || 1))
+    });
+
+    // Notify waitlist atomically
+    const waitlistSnap = await transaction.get(
+      admin.firestore().collection('waitlist')
+        .where('dinnerId', '==', booking?.dinnerId)
+        .orderBy('joinedAt', 'asc')
+        .limit(1)
+    );
+
+    if (!waitlistSnap.empty) {
+      const waitlistDoc = waitlistSnap.docs[0];
+      const entry = waitlistDoc.data();
+      
+      const notifRef = admin.firestore().collection('notifications').doc(entry.userId).collection('items').doc();
+      transaction.set(notifRef, {
+        type: 'booking_confirmed',
+        message: `A seat just opened up at a table you were waiting for!`,
+        link: `/dinner/${booking?.dinnerId}`,
+        isRead: false,
+        createdAt: Date.now()
+      });
+      transaction.delete(waitlistDoc.ref);
+    }
+  });
 
   return { success: true, refunded };
 });

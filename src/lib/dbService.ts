@@ -163,12 +163,10 @@ export const dbService = {
       const snapshot = await getDocs(q);
       const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
       
-      // Batch fetch all dinners for these bookings
       const dinnerIds = Array.from(new Set(bookingDataList.map(b => b.dinnerId)));
       const dinnersMap: Record<string, Dinner> = {};
       
       if (dinnerIds.length > 0) {
-        // Chunk dinner fetches too
         for (let i = 0; i < dinnerIds.length; i += 10) {
           const chunk = dinnerIds.slice(i, i + 10);
           const dq = query(collection(db, 'dinners'), where('__name__', 'in', chunk));
@@ -178,7 +176,6 @@ export const dbService = {
           });
         }
 
-        // Now we need hosts for these dinners
         const hostIds = Array.from(new Set(Object.values(dinnersMap).map(d => d.hostId)));
         const hostsMap = await this.getBatchUsers(hostIds);
         
@@ -203,18 +200,19 @@ export const dbService = {
       const snapshot = await getDocs(q);
       const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
       
-      // Batch fetch dinners
       const dinnerIds = Array.from(new Set(bookingDataList.map(b => b.dinnerId)));
       const dinnersMap: Record<string, Dinner> = {};
       if (dinnerIds.length > 0) {
-        const dq = query(collection(db, 'dinners'), where('__name__', 'in', dinnerIds.slice(0, 10)));
-        const dSnap = await getDocs(dq);
-        dSnap.forEach(doc => {
-          dinnersMap[doc.id] = { id: doc.id, ...doc.data() } as Dinner;
-        });
+        for (let i = 0; i < dinnerIds.length; i += 10) {
+          const chunk = dinnerIds.slice(i, i + 10);
+          const dq = query(collection(db, 'dinners'), where('__name__', 'in', chunk));
+          const dSnap = await getDocs(dq);
+          dSnap.forEach(doc => {
+            dinnersMap[doc.id] = { id: doc.id, ...doc.data() } as Dinner;
+          });
+        }
       }
 
-      // Batch fetch guests
       const guestIds = Array.from(new Set(bookingDataList.map(b => b.guestId)));
       const guestsMap = await this.getBatchUsers(guestIds);
 

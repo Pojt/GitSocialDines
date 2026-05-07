@@ -20,6 +20,7 @@ import { CreateDinner } from './pages/CreateDinner';
 import { Messages } from './pages/Messages';
 import { seedDB } from './lib/seedData';
 import { APIProvider } from '@vis.gl/react-google-maps';
+import { ToastProvider } from './ToastContext';
 
 const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_PLATFORM_KEY || '';
 const hasValidKey = Boolean(GOOGLE_MAPS_API_KEY) && GOOGLE_MAPS_API_KEY !== 'YOUR_API_KEY';
@@ -83,29 +84,31 @@ export default function App() {
 
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY} version="weekly">
-      <AuthProvider>
-        <Router>
-          <div className="min-h-screen bg-bg-warm">
-            <Navigation />
-            <main>
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/explore" element={<Explore />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/onboarding" element={<Onboarding />} />
-                <Route path="/dinner/:id" element={<DinnerDetail />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/bookings" element={<Bookings />} />
-                <Route path="/review/:dinnerId" element={<ReviewPage />} />
-                <Route path="/host/:id" element={<HostProfile />} />
-                <Route path="/host/create" element={<CreateDinner />} />
-                <Route path="/host/edit/:id" element={<CreateDinner />} />
-                <Route path="/messages/:conversationId" element={<Messages />} />
-              </Routes>
-            </main>
-          </div>
-        </Router>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <Router>
+            <div className="min-h-screen bg-bg-warm">
+              <Navigation />
+              <main>
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/explore" element={<Explore />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/onboarding" element={<Onboarding />} />
+                  <Route path="/dinner/:id" element={<DinnerDetail />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/bookings" element={<Bookings />} />
+                  <Route path="/review/:dinnerId" element={<ReviewPage />} />
+                  <Route path="/host/:id" element={<HostProfile />} />
+                  <Route path="/host/create" element={<CreateDinner />} />
+                  <Route path="/host/edit/:id" element={<CreateDinner />} />
+                  <Route path="/messages/:conversationId" element={<Messages />} />
+                </Routes>
+              </main>
+            </div>
+          </Router>
+        </AuthProvider>
+      </ToastProvider>
     </APIProvider>
   );
 }
