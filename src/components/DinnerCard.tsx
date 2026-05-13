@@ -60,9 +60,9 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
       onClick={() => navigate(`/dinner/${dinner.id}`)}
-      className="group bg-white rounded-[40px] p-4 card-shadow border border-brand-light flex flex-col h-full hover:translate-y-[-8px] transition-all duration-500 cursor-pointer overflow-hidden"
+      className="group bg-white rounded-[32px] sm:rounded-[40px] p-3 sm:p-4 card-shadow border border-brand-light flex flex-col h-full hover:translate-y-[-8px] transition-all duration-500 cursor-pointer overflow-hidden"
     >
-      <div className="relative h-64 w-full rounded-[32px] bg-stone-200 mb-5 overflow-hidden">
+      <div className="relative h-48 sm:h-64 w-full rounded-[24px] sm:rounded-[32px] bg-stone-200 mb-4 sm:mb-5 overflow-hidden">
         {/* The Menu takes center stage */}
         <img 
           src={dinner.images[0] || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80'} 
@@ -71,7 +71,7 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
         />
         
         {/* Host Avatar on image */}
-        <div className="absolute bottom-4 right-4 z-10 w-12 h-12 rounded-[18px] border-2 border-white shadow-xl overflow-hidden bg-stone-100">
+        <div className="absolute bottom-3 right-3 sm:bottom-4 sm:right-4 z-10 w-10 h-10 sm:w-12 sm:h-12 rounded-[14px] sm:rounded-[18px] border-2 border-white shadow-xl overflow-hidden bg-stone-100">
            <img 
              src={dinner.host?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dinner.hostId}`} 
              className="w-full h-full object-cover" 
@@ -80,11 +80,11 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
         </div>
         
         {/* Overlay for food/dinner title */}
-        <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/80 via-black/20 to-transparent">
+        <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5 bg-gradient-to-t from-black/80 via-black/20 to-transparent">
            <div className="flex justify-between items-end">
-              <div className="max-w-[80%]">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/70 mb-1">In {dinner.locationName || dinner.host?.city?.split(' ')[0]}</p>
-                <h3 className="serif text-xl font-bold text-white leading-tight">
+              <div className="max-w-[85%] sm:max-w-[80%]">
+                <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-white/70 mb-0.5 sm:mb-1">In {dinner.locationName || dinner.host?.city?.split(' ')[0]}</p>
+                <h3 className="serif text-lg sm:text-xl font-bold text-white leading-tight truncate">
                   {dinner.title}
                 </h3>
               </div>
@@ -94,44 +94,45 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
         {/* Heart icon button */}
         <button 
           onClick={handleFavoriteClick}
-          className={`absolute top-4 left-4 p-2.5 rounded-full backdrop-blur-md transition-all ${isFavorite ? 'bg-brand text-white' : 'bg-white/20 text-white hover:bg-white/40'}`}
+          className={`absolute top-3 left-3 sm:top-4 sm:left-4 p-2 sm:p-2.5 rounded-full backdrop-blur-md transition-all ${isFavorite ? 'bg-brand text-white' : 'bg-white/20 text-white hover:bg-white/40'}`}
         >
-          <Heart size={18} fill={isFavorite ? "currentColor" : "none"} strokeWidth={2.5} />
+          <Heart size={16} fill={isFavorite ? "currentColor" : "none"} strokeWidth={2.5} className="sm:hidden" />
+          <Heart size={18} fill={isFavorite ? "currentColor" : "none"} strokeWidth={2.5} className="hidden sm:block" />
         </button>
 
         {/* Personality Badge (Vibe) */}
-        <div className="absolute top-4 right-4">
-           <span className="bg-brand text-white px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4">
+           <span className="bg-brand text-white px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[8px] sm:text-[10px] font-black uppercase tracking-widest shadow-lg">
              {dinner.vibe}
            </span>
         </div>
       </div>
       
-      <div className="px-2 flex flex-col flex-1">
-        <div className="flex items-center gap-3 mb-4">
+      <div className="px-1 sm:px-2 flex flex-col flex-1">
+        <div className="flex items-center gap-3 mb-3 sm:mb-4">
           <div className="flex-1 min-w-0">
-             <div className="flex items-center justify-between mb-1">
-                <span className="text-lg font-serif font-black text-ink truncate">
+             <div className="flex items-center justify-between mb-0.5 sm:mb-1">
+                <span className="text-base sm:text-lg font-serif font-black text-ink truncate">
                   {dinner.cuisine} with {dinner.host?.displayName}
                 </span>
                 <span className="text-brand font-black text-sm">${dinner.price}</span>
              </div>
-             <p className="text-[10px] text-stone-400 uppercase tracking-widest font-black">
-                {distanceText ? `${distanceText} away` : 'Nearby'} • {dinner.vibe} Atmosphere
+             <p className="text-[8px] sm:text-[10px] text-stone-400 uppercase tracking-widest font-black">
+                {distanceText ? `${distanceText} away` : 'Nearby'} • {dinner.vibe}
              </p>
           </div>
         </div>
 
         {/* Shared Interests */}
         {profile?.interests && dinner.host?.interests && (
-          <div className="mb-4">
-            <div className="flex flex-wrap gap-1.5">
-              {dinner.host.interests.slice(0, 3).map(interest => {
+          <div className="mb-3 sm:mb-4">
+            <div className="flex flex-wrap gap-1 sm:gap-1.5">
+              {dinner.host.interests.slice(0, 2).map(interest => {
                 const isMatch = profile.interests?.includes(interest);
                 return (
                   <span 
                     key={interest} 
-                    className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                    className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest border transition-colors ${
                       isMatch 
                       ? 'bg-brand/10 border-brand text-brand' 
                       : 'bg-stone-50 border-stone-100 text-stone-400'
@@ -141,23 +142,23 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
                   </span>
                 );
               })}
-              {dinner.host.interests.length > 3 && (
-                <span className="px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-widest bg-stone-50 border border-stone-100 text-stone-400">
-                  +{dinner.host.interests.length - 3} More
+              {dinner.host.interests.length > 2 && (
+                <span className="px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[8px] sm:text-[9px] font-black uppercase tracking-widest bg-stone-50 border border-stone-100 text-stone-400">
+                  +{dinner.host.interests.length - 2}
                 </span>
               )}
             </div>
           </div>
         )}
 
-        <div className="mt-auto pt-4 border-t border-brand-light flex items-center justify-between">
-           <div className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500">
+        <div className="mt-auto pt-3 sm:pt-4 border-t border-brand-light flex items-center justify-between">
+           <div className="flex items-center gap-1 sm:gap-1.5">
+              <span className="w-1 h-1 sm:w-1.5 sm:h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-stone-500">
                  {dinner.guestsMax - dinner.guestsCount} Seats Left
               </span>
            </div>
-           <span className="text-[10px] font-black uppercase tracking-widest text-brand group-hover:translate-x-1 transition-transform">
+           <span className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-brand group-hover:translate-x-1 transition-transform">
               Join Table →
            </span>
         </div>

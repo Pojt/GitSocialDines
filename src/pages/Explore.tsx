@@ -16,8 +16,7 @@ import {
   MapPin,
   X
 } from 'lucide-react';
-import { Map, Marker, Overlay, ZoomControl } from 'pigeon-maps';
-import { stamenToner } from 'pigeon-maps/providers';
+import { Map, Marker, APIProvider, MapControl, ControlPosition } from '@vis.gl/react-google-maps';
 import { calculateDistance, formatDistance } from '../lib/utils';
 
 const CUISINES = ['All', 'Italian', 'French', 'Japanese', 'Mexican', 'Indian', 'Mediterranean', 'Nordic', 'Latin American'];
@@ -63,7 +62,7 @@ export const Explore: React.FC = () => {
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
   
-  const [mapCenter, setMapCenter] = useState<[number, number]>([52.52, 13.405]); // Berlin default
+  const [mapCenter, setMapCenter] = useState<google.maps.LatLngLiteral>({ lat: 52.52, lng: 13.405 }); // Berlin default
   const [mapZoom, setMapZoom] = useState(11);
 
   const { profile } = useAuth();
@@ -87,7 +86,7 @@ export const Explore: React.FC = () => {
       navigator.geolocation.getCurrentPosition(pos => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(loc);
-        setMapCenter([loc.lat, loc.lng]);
+        setMapCenter(loc);
       }, (err) => {
         console.warn('Geolocation denied or failed:', err);
       });
@@ -131,62 +130,63 @@ export const Explore: React.FC = () => {
   return (
     <div className="bg-white min-h-screen">
       {/* Search & Meta Header */}
-      <div className="pt-24 sm:pt-28 pb-8 px-4 sm:px-6 lg:px-8 border-b border-brand-light sticky top-0 bg-white/95 backdrop-blur-xl z-30">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="flex flex-col md:flex-row gap-4">
+      <div className="pt-24 sm:pt-28 pb-6 px-4 sm:px-6 lg:px-8 border-b border-brand-light sticky top-0 bg-white/95 backdrop-blur-xl z-30">
+        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
+          <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
             <div className="relative flex-1 group">
-              <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-stone-300 group-focus-within:text-brand transition-colors" size={20} />
+              <Search className="absolute left-5 sm:left-7 top-1/2 -translate-y-1/2 text-stone-300 group-focus-within:text-brand transition-colors" size={20} />
               <input 
                 type="text" 
                 placeholder="Find interesting hosts or cuisines..." 
-                className="w-full bg-[#F2F1EA] border border-brand-light rounded-full py-4 pl-14 pr-6 focus:outline-none focus:border-brand/40 font-serif italic text-lg transition-all card-shadow-sm"
+                className="w-full bg-[#F2F1EA] border border-brand-light rounded-[24px] sm:rounded-[32px] py-4 sm:py-5 pl-14 sm:pl-16 pr-6 focus:outline-none focus:border-brand/40 font-serif italic text-lg sm:text-xl transition-all card-shadow-sm"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
             
-            <div className="flex gap-2">
+            <div className="flex gap-2 w-full md:w-auto">
                <button 
                  onClick={() => setSharedInterestsOnly(!sharedInterestsOnly)}
-                 className={`px-6 rounded-full border flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${sharedInterestsOnly ? 'bg-brand text-white border-brand' : 'bg-white border-brand-light text-stone-500 hover:border-brand/40'}`}
+                 className={`flex-1 md:flex-none px-4 sm:px-6 py-3 md:py-0 rounded-full border flex items-center justify-center gap-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${sharedInterestsOnly ? 'bg-brand text-white border-brand' : 'bg-white border-brand-light text-stone-500 hover:border-brand/40'}`}
                >
                  <Sparkles size={14} />
-                 Aligned Passions
+                 <span className="hidden sm:inline">Aligned Passions</span>
+                 <span className="sm:hidden">Passions</span>
                </button>
                <button 
                  onClick={() => setShowFilters(!showFilters)}
-                 className={`px-6 rounded-full border flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-ink text-white border-ink' : 'bg-white border-brand-light text-stone-500 hover:border-brand/40'}`}
+                 className={`flex-1 md:flex-none px-4 sm:px-6 py-3 md:py-0 rounded-full border flex items-center justify-center gap-2 text-[9px] sm:text-[10px] font-black uppercase tracking-widest transition-all ${showFilters ? 'bg-ink text-white border-ink' : 'bg-white border-brand-light text-stone-500 hover:border-brand/40'}`}
                >
                  <Filter size={16} />
                  Filters {(selectedDietary.length + selectedVibes.length) > 0 && <span className="bg-brand text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px] ml-1">{selectedDietary.length + selectedVibes.length}</span>}
                </button>
 
-               <div className="bg-[#F2F1EA] p-1.5 rounded-full flex gap-1 border border-brand-light">
+               <div className="bg-[#F2F1EA] p-1 rounded-full flex gap-0.5 border border-brand-light shrink-0">
                  <button 
                    onClick={() => setViewMode('grid')}
-                   className={`p-2.5 rounded-full transition-all ${viewMode === 'grid' ? 'bg-white text-brand shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                   className={`p-2 rounded-full transition-all ${viewMode === 'grid' ? 'bg-white text-brand shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
                  >
-                   <LayoutGrid size={18} />
+                   <LayoutGrid size={16} />
                  </button>
                  <button 
                    onClick={() => setViewMode('map')}
-                   className={`p-2.5 rounded-full transition-all ${viewMode === 'map' ? 'bg-white text-brand shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
+                   className={`p-2 rounded-full transition-all ${viewMode === 'map' ? 'bg-white text-brand shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
                  >
-                   <MapIcon size={18} />
+                   <MapIcon size={16} />
                  </button>
                </div>
             </div>
           </div>
 
           {/* Quick Cuisine Filter */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 -mx-4 px-4 sm:mx-0 sm:px-0">
             {CUISINES.map(cuisine => (
                <button
                  key={cuisine}
                  onClick={() => setSelectedCuisine(cuisine)}
-                 className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border ${
+                 className={`px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border shrink-0 ${
                    selectedCuisine === cuisine 
-                   ? 'bg-brand text-white border-brand shadow-md scale-105' 
+                   ? 'bg-brand text-white border-brand shadow-md lg:scale-105' 
                    : 'bg-white border-brand-light text-stone-500 hover:bg-brand/5'
                  }`}
                >
@@ -332,47 +332,51 @@ export const Explore: React.FC = () => {
             )}
           </div>
         ) : (
-          <div className="h-[60vh] sm:h-[70vh] rounded-[40px] overflow-hidden border border-brand-light card-shadow relative">
+          <div className="h-[60vh] sm:h-[70vh] rounded-[40px] overflow-hidden border border-brand-light card-shadow relative bg-stone-50">
              <Map 
-               center={mapCenter} 
-               zoom={mapZoom} 
-               onBoundsChanged={({ center, zoom }) => {
-                 setMapCenter(center);
-                 setMapZoom(zoom);
+               defaultCenter={mapCenter} 
+               center={mapCenter}
+               defaultZoom={mapZoom} 
+               onCameraChanged={(ev) => {
+                 setMapCenter(ev.detail.center);
+                 setMapZoom(ev.detail.zoom);
                }}
-               provider={stamenToner}
+               mapId="bf50a41d06e23652"
+               disableDefaultUI={true}
              >
-               <ZoomControl />
                {sortedDinners.map(dinner => dinner.lat && dinner.lng && (
-                 <React.Fragment key={dinner.id}>
-                   <Overlay anchor={[dinner.lat, dinner.lng]} offset={[0, 0]}>
-                      <motion.div 
-                        whileHover={{ scale: 1.1 }}
-                        onClick={() => (window.location.href = `/dinner/${dinner.id}`)}
-                        className="cursor-pointer"
-                      >
-                         <div className="bg-ink text-white px-3 py-1.5 rounded-full font-serif font-black flex items-center gap-2 border-2 border-white shadow-xl">
-                            <span className="text-xs">${dinner.price}</span>
-                            <div className="w-6 h-6 rounded-full overflow-hidden border border-white/20">
-                               <img src={dinner.host?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${dinner.hostId}`} className="w-full h-full object-cover" alt="" />
-                            </div>
-                         </div>
-                      </motion.div>
-                   </Overlay>
-                 </React.Fragment>
+                 <Marker 
+                   key={dinner.id}
+                   position={{ lat: dinner.lat, lng: dinner.lng }}
+                   onClick={() => (window.location.href = `/dinner/${dinner.id}`)}
+                 />
                ))}
-               {userLocation && (
-                 <Marker anchor={[userLocation.lat, userLocation.lng]} color="#C26D46" />
+               
+               {userLocation && window.google && (
+                 <Marker 
+                   position={userLocation}
+                   icon={{
+                     path: google.maps.SymbolPath.CIRCLE,
+                     fillColor: '#736748',
+                     fillOpacity: 1,
+                     scale: 8,
+                     strokeColor: 'white',
+                     strokeWeight: 2,
+                   }}
+                 />
                )}
+
+               <MapControl position={ControlPosition.RIGHT_BOTTOM}>
+                 <div className="m-6 flex flex-col gap-2">
+                    <button 
+                      onClick={() => userLocation && setMapCenter(userLocation)}
+                      className="p-3 bg-white rounded-2xl shadow-xl border border-brand-light text-brand hover:scale-105 transition-transform"
+                    >
+                       <MapPin size={20} />
+                    </button>
+                 </div>
+               </MapControl>
              </Map>
-             <div className="absolute bottom-6 right-6 z-10 flex flex-col gap-2">
-                <button 
-                  onClick={() => userLocation && setMapCenter([userLocation.lat, userLocation.lng])}
-                  className="p-3 bg-white rounded-2xl shadow-xl border border-brand-light text-brand hover:scale-105 transition-transform"
-                >
-                   <MapPin size={20} />
-                </button>
-             </div>
           </div>
         )}
       </main>
