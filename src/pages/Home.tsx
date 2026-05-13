@@ -151,26 +151,24 @@ export const Home: React.FC = () => {
               </div>
 
               {/* When */}
-              <div 
-                onClick={() => {
-                  try {
-                    // @ts-ignore
-                    dateInputRef.current?.showPicker();
-                  } catch (e) {
-                    dateInputRef.current?.focus();
-                  }
-                }}
+              <div
                 className="flex-1 w-full px-6 sm:px-10 py-3.5 sm:py-6 text-left border-b lg:border-b-0 lg:border-r border-stone-100 group-focus-within:border-brand/20 transition-colors cursor-pointer relative"
               >
                 <label className="block text-[9px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-stone-400 mb-1 pointer-events-none">When</label>
                 <div className={`truncate pointer-events-none text-base sm:text-xl ${searchQuery.when ? 'text-ink font-bold' : 'text-stone-200 font-medium'}`}>
                   {formatDisplayDate(searchQuery.when)}
                 </div>
-                <input 
+                <input
                   ref={dateInputRef}
-                  type="date" 
+                  type="date"
                   value={searchQuery.when}
                   onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    try {
+                      (e.target as HTMLInputElement).showPicker();
+                    } catch (_) {}
+                  }}
                   className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                 />
               </div>
