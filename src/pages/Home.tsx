@@ -171,7 +171,7 @@ export const Home: React.FC = () => {
                   type="date" 
                   value={searchQuery.when}
                   onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
-                  className="absolute inset-0 opacity-0 -z-10 w-full h-full pointer-events-none"
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                 />
               </div>
 
