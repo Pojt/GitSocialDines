@@ -16,6 +16,7 @@ export const Navigation: React.FC = () => {
   const notifRef = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) => location.pathname === path;
+  const isChatPage = location.pathname.startsWith('/messages/');
 
   useEffect(() => {
     if (!user) {
@@ -132,27 +133,29 @@ export const Navigation: React.FC = () => {
       </nav>
 
       {/* Mobile bottom nav - Moved outside the top nav to avoid stacking context issues */}
-      <div className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm bg-white/95 backdrop-blur-xl border border-brand-light px-10 py-4 flex justify-between items-center z-[100] rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.15)]">
-        <Link to="/" className={`flex flex-col items-center gap-1.5 transition-all ${isActive('/') ? 'text-brand scale-110' : 'text-stone-300'}`}>
-          <Home size={22} strokeWidth={isActive('/') ? 2.5 : 1.5} />
-          <span className="text-[8px] font-black uppercase tracking-[0.2em]">Explore</span>
-        </Link>
-        <Link to="/bookings" className={`flex flex-col items-center gap-1.5 resident relative transition-all ${isActive('/bookings') ? 'text-brand scale-110' : 'text-stone-300'}`}>
-          <div className="relative">
-            <Calendar size={22} strokeWidth={isActive('/bookings') ? 2.5 : 1.5} />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-2 min-w-[16px] h-4 bg-brand text-white rounded-full text-[8px] font-black flex items-center justify-center px-1 shadow-sm">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </div>
-          <span className="text-[8px] font-black uppercase tracking-[0.2em]">Bookings</span>
-        </Link>
-        <Link to="/profile" className={`flex flex-col items-center gap-1.5 transition-all ${isActive('/profile') ? 'text-brand scale-110' : 'text-stone-300'}`}>
-          <UserIcon size={22} strokeWidth={isActive('/profile') ? 2.5 : 1.5} />
-          <span className="text-[8px] font-black uppercase tracking-[0.2em]">Profile</span>
-        </Link>
-      </div>
+      {!isChatPage && (
+        <div className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm bg-white/95 backdrop-blur-xl border border-brand-light px-10 py-4 flex justify-between items-center z-[100] rounded-[40px] shadow-[0_20px_50px_rgba(0,0,0,0.15)]">
+          <Link to="/" className={`flex flex-col items-center gap-1.5 transition-all ${isActive('/') ? 'text-brand scale-110' : 'text-stone-300'}`}>
+            <Home size={22} strokeWidth={isActive('/') ? 2.5 : 1.5} />
+            <span className="text-[8px] font-black uppercase tracking-[0.2em]">Explore</span>
+          </Link>
+          <Link to="/bookings" className={`flex flex-col items-center gap-1.5 resident relative transition-all ${isActive('/bookings') ? 'text-brand scale-110' : 'text-stone-300'}`}>
+            <div className="relative">
+              <Calendar size={22} strokeWidth={isActive('/bookings') ? 2.5 : 1.5} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-2 min-w-[16px] h-4 bg-brand text-white rounded-full text-[8px] font-black flex items-center justify-center px-1 shadow-sm">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[8px] font-black uppercase tracking-[0.2em]">Bookings</span>
+          </Link>
+          <Link to="/profile" className={`flex flex-col items-center gap-1.5 transition-all ${isActive('/profile') ? 'text-brand scale-110' : 'text-stone-300'}`}>
+            <UserIcon size={22} strokeWidth={isActive('/profile') ? 2.5 : 1.5} />
+            <span className="text-[8px] font-black uppercase tracking-[0.2em]">Profile</span>
+          </Link>
+        </div>
+      )}
     </>
   );
 };

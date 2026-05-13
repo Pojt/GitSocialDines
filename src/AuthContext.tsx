@@ -59,7 +59,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: Date.now()
             };
             try {
-              await setDoc(userRef, newProfile);
+              const { writeBatch } = await import('firebase/firestore');
+              const batch = writeBatch(db);
+              batch.set(userRef, newProfile);
+              batch.set(doc(db, 'profiles', user.uid), {
+                displayName: newProfile.displayName,
+                photoURL: newProfile.photoURL,
+                bio: newProfile.bio,
+                city: newProfile.city,
+                interests: newProfile.interests,
+                isVerified: false
+              });
+              await batch.commit();
               setProfile({ id: user.uid, ...newProfile } as UserProfile);
             } catch (e) {
               console.error("Auth: Failed to create new profile", e);

@@ -171,7 +171,7 @@ export const Home: React.FC = () => {
                   type="date" 
                   value={searchQuery.when}
                   onChange={(e) => setSearchQuery(prev => ({ ...prev, when: e.target.value }))}
-                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer pointer-events-none"
                 />
               </div>
 
@@ -381,19 +381,21 @@ export const Home: React.FC = () => {
       </div>
     </div>
 
-    {/* Final Call to Action */}
-    <div className="mt-20 sm:mt-40 text-center py-12 sm:py-20 bg-stone-900 rounded-[32px] sm:rounded-[64px] text-white px-6">
-      <Sparkles size={40} className="mx-auto mb-6 text-brand" />
-      <h3 className="serif text-2xl sm:text-4xl mb-6">Ready to find your seat?</h3>
-      <p className="text-stone-400 mb-8 sm:mb-10 max-w-sm mx-auto text-sm sm:text-base">Discover the art of dining with strangers who feel like old friends.</p>
-      <button 
-        onClick={() => navigate('/explore')}
-        className="w-full sm:w-auto bg-brand text-white px-10 py-5 rounded-full text-[10px] sm:text-sm font-black uppercase tracking-widest hover:bg-brand/90 transition-all shadow-xl shadow-brand/20"
-      >
-        Explore All Dinners
-      </button>
+      {/* Final Call to Action */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mt-20 sm:mt-40 text-center py-12 sm:py-20 bg-stone-900 rounded-[32px] sm:rounded-[64px] text-white px-6">
+          <Sparkles size={40} className="mx-auto mb-6 text-brand" />
+          <h3 className="serif text-2xl sm:text-4xl mb-6">Ready to find your seat?</h3>
+          <p className="text-stone-400 mb-8 sm:mb-10 max-w-sm mx-auto text-sm sm:text-base">Discover the art of dining with strangers who feel like old friends.</p>
+          <button 
+            onClick={() => navigate('/explore')}
+            className="w-full sm:w-auto bg-brand text-white px-10 py-5 rounded-full text-[10px] sm:text-sm font-black uppercase tracking-widest hover:bg-brand/90 transition-all shadow-xl shadow-brand/20"
+          >
+            Explore All Dinners
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
   );
 };
 

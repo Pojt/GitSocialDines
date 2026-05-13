@@ -37,7 +37,7 @@ service cloud.firestore {
             && data.get('isVerified', false) is bool;
       }
 
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isOwner(userId) && isValidProfile(incoming());
     }
 
@@ -55,7 +55,7 @@ service cloud.firestore {
             && (data.get('vibe', '') is string && data.get('vibe', '').size() <= 50);
       }
 
-      allow read: if isSignedIn(); 
+      allow read: if true; 
       allow create: if isSignedIn() && isValidDinner(incoming()) && isValidId(dinnerId);
       allow update: if isSignedIn() && (
         (isOwner(existing().hostId) && isValidDinner(incoming()) && incoming().hostId == existing().hostId) ||

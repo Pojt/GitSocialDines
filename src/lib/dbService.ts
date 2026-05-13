@@ -161,10 +161,17 @@ export const dbService = {
   },
 
   async getBookings(userId: string) {
-    const q = query(collection(db, 'bookings'), where('guestId', '==', userId), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'bookings'), where('guestId', '==', userId));
     try {
       const snapshot = await getDocs(q);
-      const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+      const bookingDataList = snapshot.docs.map(d => {
+        const data = d.data();
+        return { 
+          id: d.id, 
+          ...data,
+          createdAt: data.createdAt?.toMillis?.() || data.createdAt || Date.now()
+        } as Booking;
+      }).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       
       const dinnerIds = Array.from(new Set(bookingDataList.map(b => b.dinnerId)));
       const dinnersMap: Record<string, Dinner> = {};
@@ -198,10 +205,17 @@ export const dbService = {
   },
 
   async getHostBookings(userId: string) {
-    const q = query(collection(db, 'bookings'), where('hostId', '==', userId), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'bookings'), where('hostId', '==', userId));
     try {
       const snapshot = await getDocs(q);
-      const bookingDataList = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+      const bookingDataList = snapshot.docs.map(d => {
+        const data = d.data();
+        return { 
+          id: d.id, 
+          ...data,
+          createdAt: data.createdAt?.toMillis?.() || data.createdAt || Date.now()
+        } as Booking;
+      }).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
       
       const dinnerIds = Array.from(new Set(bookingDataList.map(b => b.dinnerId)));
       const dinnersMap: Record<string, Dinner> = {};
@@ -262,7 +276,7 @@ export const dbService = {
       const docRef = await addDoc(collection(db, 'bookings'), {
         ...booking,
         paymentStatus: 'unpaid',
-        createdAt: serverTimestamp()
+        createdAt: Date.now()
       });
 
       // Get context for emails

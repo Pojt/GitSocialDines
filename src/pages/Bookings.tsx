@@ -139,7 +139,7 @@ export const Bookings: React.FC = () => {
   const hostRequestCount = hostBookings.filter(b => b.status === 'pending').length;
 
   return (
-    <div className="pt-28 pb-20 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="pt-28 pb-32 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <h1 className="text-4xl sm:text-5xl font-serif font-medium text-ink mb-4">Your dining timeline</h1>
