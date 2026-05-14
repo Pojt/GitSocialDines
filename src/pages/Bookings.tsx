@@ -58,7 +58,7 @@ export const Bookings: React.FC = () => {
   }, [user, authLoading, navigate]);
 
   const [mainTab, setMainTab] = useState<'Guest' | 'Host'>('Guest');
-  const [subTab, setSubTab] = useState<'Upcoming' | 'Pending' | 'Past'>('Upcoming');
+  const [subTab, setSubTab] = useState<'Upcoming' | 'Pending' | 'Past'>('Pending');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const fetchData = async () => {

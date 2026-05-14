@@ -126,7 +126,9 @@ export const dbService = {
     const q = query(collection(db, 'dinners'), where('hostId', '==', hostId));
     try {
       const snapshot = await getDocs(q);
-      return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Dinner));
+      const dinnersData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Dinner));
+      const hosts = await this.getBatchUsers([hostId]);
+      return dinnersData.map(d => ({ ...d, host: hosts[d.hostId] }));
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, 'dinners');
       return [];
