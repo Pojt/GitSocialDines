@@ -154,7 +154,7 @@ export const CreateDinner: React.FC = () => {
   }
 
   return (
-    <div className="pt-24 pb-32 max-w-4xl mx-auto px-4">
+    <div className="pt-18 pb-32 max-w-4xl mx-auto px-4">
       <div className="mb-6">
         <button 
           onClick={() => navigate(-1)}

@@ -33,7 +33,8 @@ export const Home: React.FC = () => {
     // We initialize it imperatively to set options and listeners correctly in React
     const autocomplete = new places.Autocomplete(whereInputRef.current, {
       fields: ['formatted_address', 'geometry', 'name'],
-      types: ['(cities)'] 
+      types: ['(cities)'],
+      componentRestrictions: { country: ['NL', 'BE'] }
     });
 
     autocomplete.addListener('place_changed', () => {
@@ -106,7 +107,7 @@ export const Home: React.FC = () => {
   return (
     <div className="pb-32 bg-white">
       {/* Hero Section - Airy and Impactful */}
-      <section className="relative min-h-[85vh] sm:min-h-[80vh] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 bg-bg-warm overflow-hidden pt-28 pb-16 sm:pt-44 sm:pb-32 lg:pt-0 lg:h-[80vh]">
+      <section className="relative min-h-[85vh] sm:min-h-[80vh] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 bg-bg-warm overflow-hidden pt-18 pb-16 sm:pt-32 sm:pb-32 lg:pt-0 lg:h-[80vh]">
         {/* Subtle background abstract element */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[140%] h-[140%] bg-[radial-gradient(circle_at_center,rgba(90,90,64,0.05)_0%,transparent_60%)] pointer-events-none" />
         
@@ -116,7 +117,7 @@ export const Home: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
           >
-            <h2 className="serif text-4xl sm:text-6xl lg:text-8xl font-bold text-ink leading-[1.1] mb-6 sm:mb-8 tracking-[-0.02em]">
+            <h2 className="text-4xl sm:text-6xl lg:text-8xl font-black text-ink leading-[1.1] mb-6 sm:mb-8 tracking-[-0.02em]">
               The best stories start at <span className="text-brand">dinner.</span>
             </h2>
             <p className="hidden sm:block text-stone-500 font-sans text-base sm:text-xl lg:text-2xl opacity-60 leading-relaxed mb-10 sm:mb-16 max-w-2xl mx-auto px-4 font-normal">
@@ -176,18 +177,29 @@ export const Home: React.FC = () => {
               </div>
 
               {/* Who */}
-              <div className="flex-1 w-full px-6 sm:px-10 py-3.5 sm:py-6 text-left lg:border-r border-stone-100 group-focus-within:border-brand/20 transition-colors">
+              <div className="flex-1 w-full px-6 sm:px-10 py-3.5 sm:py-6 text-left lg:border-r border-stone-100 group-focus-within:border-brand/20 transition-colors relative">
                 <label className="block text-[9px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-stone-400 mb-1 pointer-events-none">People</label>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="20"
-                    value={searchQuery.guests}
-                    onChange={(e) => setSearchQuery(prev => ({ ...prev, guests: parseInt(e.target.value) || 1 }))}
-                    className="w-10 bg-transparent border-none p-0 focus:ring-0 focus:outline-none text-ink font-bold text-base sm:text-xl"
-                  />
-                  <span className="text-stone-300 font-medium text-base">guests</span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-stone-300 font-medium text-base sm:text-xl">{searchQuery.guests}</span>
+                    <span className="text-stone-300 font-medium text-xs sm:text-base">guests</span>
+                  </div>
+                  <div className="flex items-center gap-1 bg-stone-50 rounded-full p-1 border border-stone-100">
+                    <button 
+                      type="button"
+                      onClick={() => setSearchQuery(prev => ({ ...prev, guests: Math.max(1, prev.guests - 1) }))}
+                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white hover:shadow-sm transition-all text-stone-400 hover:text-brand"
+                    >
+                      -
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setSearchQuery(prev => ({ ...prev, guests: Math.min(20, prev.guests + 1) }))}
+                      className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-white hover:shadow-sm transition-all text-stone-400 hover:text-brand"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -293,7 +305,7 @@ export const Home: React.FC = () => {
                         <Star size={16} strokeWidth={2.5} />
                         <span className="text-[10px] font-black uppercase tracking-[0.3em]">Tables of the month</span>
                       </div>
-                      <h3 className="serif text-2xl sm:text-4xl text-ink leading-tight">Discover your next favorite local table</h3>
+                      <h3 className="text-2xl sm:text-4xl font-black text-ink leading-tight">Discover your next favorite local table</h3>
                     </div>
                     <button 
                       onClick={() => navigate('/explore')}
@@ -317,7 +329,7 @@ export const Home: React.FC = () => {
                               <span className="bg-brand text-white px-3 sm:px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest">{dinner.vibe}</span>
                               <span className="bg-white/20 backdrop-blur text-white px-3 sm:px-4 py-1.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-widest">{dinner.cuisine}</span>
                             </div>
-                            <h4 className="serif text-2xl sm:text-4xl text-white mb-4 leading-tight">"{dinner.title}"</h4>
+                            <h4 className="text-2xl sm:text-4xl font-black text-white mb-4 leading-tight">"{dinner.title}"</h4>
                             <div className="flex items-center gap-4 pt-4 sm:pt-6 border-t border-white/20">
                                <div className="flex -space-x-2">
                                   {(dinner.host?.interests || []).slice(0, 3).map(interest => (
@@ -385,7 +397,7 @@ export const Home: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mt-20 sm:mt-40 text-center py-12 sm:py-20 bg-stone-900 rounded-[32px] sm:rounded-[64px] text-white px-6">
           <Sparkles size={40} className="mx-auto mb-6 text-brand" />
-          <h3 className="serif text-2xl sm:text-4xl mb-6">Ready to find your seat?</h3>
+          <h3 className="text-2xl sm:text-4xl font-black mb-6">Ready to find your seat?</h3>
           <p className="text-stone-400 mb-8 sm:mb-10 max-w-sm mx-auto text-sm sm:text-base">Discover the art of dining with strangers who feel like old friends.</p>
           <button 
             onClick={() => navigate('/explore')}

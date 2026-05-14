@@ -63,14 +63,14 @@ export const ReviewPage: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="pt-32 text-center font-serif text-2xl animate-pulse italic">Verifying attendance...</div>;
+  if (loading) return <div className="pt-20 text-center text-2xl font-black text-brand animate-pulse">Verifying attendance...</div>;
 
   if (error) {
     return (
-      <div className="pt-32 px-6 max-w-md mx-auto text-center">
+      <div className="pt-20 px-6 max-w-md mx-auto text-center">
         <div className="bg-rose-50 p-8 rounded-[32px] border border-rose-100 mb-8">
            <ShieldCheck className="mx-auto text-rose-500 mb-4" size={48} />
-           <h2 className="text-2xl font-serif font-black text-rose-900 mb-2">Review Not Allowed</h2>
+           <h2 className="text-2xl font-black text-rose-900 mb-2">Review Not Allowed</h2>
            <p className="text-rose-700/80 font-medium">{error}</p>
         </div>
         <button onClick={() => navigate(-1)} className="olive-btn flex items-center gap-2 mx-auto">
@@ -81,11 +81,11 @@ export const ReviewPage: React.FC = () => {
   }
 
   return (
-    <div className="bg-white min-h-screen pt-32 pb-40">
+    <div className="bg-white min-h-screen pt-20 pb-40">
       <div className="max-w-2xl mx-auto px-6">
         <div className="mb-12 text-center">
            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-brand mb-4">The Final Course</p>
-           <h1 className="text-4xl sm:text-5xl font-serif font-black text-ink mb-6">How was your stay at {dinner?.title}?</h1>
+           <h1 className="text-4xl sm:text-5xl font-black text-ink mb-6">How was your stay at {dinner?.title}?</h1>
            <div className="flex items-center justify-center gap-3 bg-stone-50 p-4 rounded-2xl border border-stone-100 inline-flex">
               <img src={dinner?.host?.photoURL} className="w-8 h-8 rounded-full border border-white" />
               <span className="text-xs font-black uppercase tracking-wider text-stone-500">Host: {dinner?.host?.displayName}</span>

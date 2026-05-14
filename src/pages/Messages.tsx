@@ -95,7 +95,7 @@ export const Messages: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-bg-warm">
       {/* Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 bg-white border-b border-brand-light px-4 py-4 flex items-center gap-4">
+      <div className="fixed top-12 sm:top-14 left-0 right-0 z-40 bg-white border-b border-brand-light px-4 py-4 flex items-center gap-4">
         <button
           onClick={() => navigate(-1)}
           className="w-10 h-10 rounded-full bg-brand/5 flex items-center justify-center text-brand hover:bg-brand/10 transition-colors flex-shrink-0"
@@ -126,10 +126,10 @@ export const Messages: React.FC = () => {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto pt-24 pb-28 px-4 space-y-3">
+      <div className="flex-1 overflow-y-auto pt-18 pb-24 px-4 space-y-3">
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-stone-400 font-medium italic font-serif text-center">
+            <p className="text-stone-400 font-medium text-center">
               No messages yet. Say hello!
             </p>
           </div>

@@ -84,7 +84,7 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
            <div className="flex justify-between items-end">
               <div className="max-w-[85%] sm:max-w-[80%]">
                 <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.2em] text-white/70 mb-0.5 sm:mb-1">In {dinner.locationName || dinner.host?.city?.split(' ')[0]}</p>
-                <h3 className="serif text-lg sm:text-xl font-bold text-white leading-tight truncate">
+                <h3 className="text-lg sm:text-xl font-bold text-white leading-tight truncate">
                   {dinner.title}
                 </h3>
               </div>
@@ -112,7 +112,7 @@ export const DinnerCard: React.FC<{ dinner: Dinner, userLocation?: {lat: number,
         <div className="flex items-center gap-3 mb-3 sm:mb-4">
           <div className="flex-1 min-w-0">
              <div className="flex items-center justify-between mb-0.5 sm:mb-1">
-                <span className="text-base sm:text-lg font-serif font-black text-ink truncate">
+                <span className="text-base sm:text-lg font-black text-ink truncate">
                   {dinner.cuisine} with {dinner.host?.displayName}
                 </span>
                 <span className="text-brand font-black text-sm">${dinner.price}</span>

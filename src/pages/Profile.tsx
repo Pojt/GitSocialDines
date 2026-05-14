@@ -124,8 +124,8 @@ export const Profile: React.FC = () => {
           <div className="w-20 h-20 bg-brand/5 rounded-full flex items-center justify-center text-brand mb-6">
             <ChefHat size={40} />
           </div>
-          <h2 className="serif text-4xl font-black text-ink mb-2">Your Story Awaits</h2>
-          <p className="text-stone-500 font-serif italic text-lg mb-8 opacity-70 text-center max-w-sm">
+          <h2 className="text-4xl font-black text-ink mb-2">Your Story Awaits</h2>
+          <p className="text-stone-500 font-medium text-lg mb-8 opacity-70 text-center max-w-sm">
             Sign in to manage your tables, track your bookings, and connect with other locals.
           </p>
           <button 
@@ -154,7 +154,7 @@ export const Profile: React.FC = () => {
          {isOwnProfile && (
            <button 
              onClick={handleLogout}
-             className="absolute top-24 right-4 sm:right-8 p-3 bg-white rounded-full card-shadow text-stone-400 hover:text-rose-500 transition-all active:scale-95"
+             className="absolute top-18 right-4 sm:right-8 p-3 bg-white rounded-full card-shadow text-stone-400 hover:text-rose-500 transition-all active:scale-95"
            >
              <LogOut size={20} />
            </button>

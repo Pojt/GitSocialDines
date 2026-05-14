@@ -49,10 +49,10 @@ export const Navigation: React.FC = () => {
     <>
       <nav className="fixed top-0 left-0 right-0 z-50 bg-bg-warm/95 backdrop-blur-md border-b border-brand-light">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 sm:h-20 items-center">
-            <div className="flex items-center gap-12">
+          <div className="flex justify-between h-12 sm:h-14 items-center">
+            <div className="flex items-center gap-10">
               <Link to="/" className="flex items-center space-x-2 group">
-                <h1 className="font-serif text-xl sm:text-3xl font-bold tracking-tight text-brand transition-colors group-hover:opacity-80">Social Dine</h1>
+                <h1 className="font-serif text-base sm:text-xl font-bold tracking-tight text-brand transition-colors group-hover:opacity-80">Social Dine</h1>
               </Link>
 
               {user && (

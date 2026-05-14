@@ -146,8 +146,8 @@ export const DinnerDetail: React.FC = () => {
     setWaitlistLoading(false);
   };
 
-  if (loading) return <div className="pt-32 text-center font-serif text-2xl">Preparing the table...</div>;
-  if (!dinner) return <div className="pt-32 text-center font-serif text-2xl">Dinner not found.</div>;
+  if (loading) return <div className="pt-32 text-center text-2xl font-black text-brand">Preparing the table...</div>;
+  if (!dinner) return <div className="pt-32 text-center text-2xl font-black text-stone-400">Dinner not found.</div>;
 
   const dateStr = new Date(dinner.date).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -159,7 +159,7 @@ export const DinnerDetail: React.FC = () => {
   return (
     <div className="bg-white min-h-screen">
       {/* Mobile Header / Back Button */}
-      <div className="fixed top-24 left-4 z-40 sm:top-28 sm:left-8">
+      <div className="fixed top-16 left-4 z-40 sm:top-20 sm:left-8">
         <button 
           onClick={() => navigate(-1)} 
           className="w-10 h-10 bg-white/90 backdrop-blur-md rounded-full shadow-lg flex items-center justify-center text-stone-900 border border-stone-100 hover:text-brand transition-colors"
@@ -168,7 +168,7 @@ export const DinnerDetail: React.FC = () => {
         </button>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-24 pb-40 lg:pb-32">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-18 pb-40 lg:pb-32">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
           
           {/* Main Content */}
@@ -185,7 +185,7 @@ export const DinnerDetail: React.FC = () => {
                 <div className="rounded-[1.5rem] sm:rounded-[2rem] overflow-hidden relative">
                   <img src={dinner.images[2] || dinner.images[0] || 'https://images.unsplash.com/photo-1559339352-11d035aa65de?auto=format&fit=crop&q=80'} className="w-full h-full object-cover" alt="Detail 2" />
                   {dinner.images.length > 3 && (
-                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white text-base sm:text-lg font-serif">
+                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center text-white text-base sm:text-lg font-black uppercase tracking-widest">
                        +{dinner.images.length - 3}
                      </div>
                   )}
@@ -207,7 +207,7 @@ export const DinnerDetail: React.FC = () => {
                   </>
                 )}
               </div>
-              <h1 className="text-4xl sm:text-6xl font-serif font-bold text-stone-900 mb-8 sm:mb-10 leading-[1.1] tracking-tight">{dinner.title}</h1>
+              <h1 className="text-4xl sm:text-6xl font-black text-stone-900 mb-8 sm:mb-10 leading-[1.1] tracking-tight">{dinner.title}</h1>
 
               {/* Dedicated Vibe & Seats Section */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 sm:mb-12">
@@ -217,7 +217,7 @@ export const DinnerDetail: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-orange-600/60 mb-1 whitespace-nowrap">Atmosphere</p>
-                    <p className="text-xl sm:text-2xl font-serif font-bold text-ink leading-none truncate">{dinner.vibe}</p>
+                    <p className="text-xl sm:text-2xl font-black text-ink leading-none truncate">{dinner.vibe}</p>
                   </div>
                 </div>
 
@@ -227,7 +227,7 @@ export const DinnerDetail: React.FC = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.2em] text-brand/60 mb-1 whitespace-nowrap">Interactions</p>
-                    <p className="text-xl sm:text-2xl font-serif font-bold text-ink leading-none">
+                    <p className="text-xl sm:text-2xl font-black text-ink leading-none">
                       {dinner.guestsMax} 
                       <span className="text-[10px] font-sans font-medium text-brand/40 ml-1.5 uppercase">Guests max</span>
                     </p>
@@ -259,7 +259,7 @@ export const DinnerDetail: React.FC = () => {
 
             {/* Description */}
             <div className="max-w-2xl px-1 pb-12 sm:pb-20">
-              <h2 className="text-2xl sm:text-3xl font-serif font-black mb-6">About the evening</h2>
+              <h2 className="text-2xl sm:text-3xl font-black mb-6">About the evening</h2>
               <p className="text-stone-600 text-lg sm:text-xl leading-relaxed whitespace-pre-wrap font-sans opacity-80 font-normal">
                 {dinner.description}
               </p>
@@ -290,7 +290,7 @@ export const DinnerDetail: React.FC = () => {
                     
                     <div className="flex-1">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
-                        <h3 className="text-2xl sm:text-3xl font-serif font-black text-ink">Host {dinner.host?.displayName}</h3>
+                        <h3 className="text-2xl sm:text-3xl font-black text-ink">Host {dinner.host?.displayName}</h3>
                         <div className="flex items-center justify-center sm:justify-start gap-1 text-emerald-600 font-bold text-[9px] uppercase tracking-widest">
                            <Star size={10} fill="currentColor" />
                            <Star size={10} fill="currentColor" />
@@ -300,7 +300,7 @@ export const DinnerDetail: React.FC = () => {
                         </div>
                       </div>
                       
-                      <p className="text-stone-600 text-base sm:text-xl font-serif italic leading-relaxed mb-6 opacity-90 px-4 sm:px-0">
+                      <p className="text-stone-600 text-base sm:text-xl leading-relaxed mb-6 opacity-90 px-4 sm:px-0 font-medium">
                         "{dinner.host?.bio || "I love bringing people together through simple, honest food and the spirit of the table."}"
                       </p>
 
@@ -387,9 +387,9 @@ export const DinnerDetail: React.FC = () => {
 
           {/* Checkout / Booking Sidebar (Desktop) */}
           <div className="hidden lg:block lg:col-span-4">
-            <div className="sticky top-28 bg-white border border-brand-light card-shadow rounded-[32px] p-8">
+            <div className="sticky top-20 bg-white border border-brand-light card-shadow rounded-[32px] p-8">
                <div className="flex items-center justify-between mb-8">
-                  <div className="text-3xl font-serif font-bold text-ink">
+                  <div className="text-3xl font-black text-ink">
                       ${dinner.price}
                     <span className="text-xs font-sans font-medium text-stone-400 ml-2 italic">per guest</span>
                   </div>
@@ -479,7 +479,7 @@ export const DinnerDetail: React.FC = () => {
       {/* Mobile Sticky CTA */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-t border-brand-light p-4 pb-8 flex items-center justify-between">
          <div>
-            <div className="text-xl font-serif font-bold text-ink">${dinner.price} <span className="text-xs font-sans text-stone-400 italic">pp</span></div>
+            <div className="text-xl font-black text-ink">${dinner.price} <span className="text-xs font-sans text-stone-400 italic">pp</span></div>
             <div className="text-[10px] font-black text-brand uppercase tracking-widest">{dateStr.split(',')[1]}</div>
          </div>
          {isHost ? (
@@ -535,7 +535,7 @@ export const DinnerDetail: React.FC = () => {
                       <ShieldCheck size={32} className="sm:hidden" />
                       <ShieldCheck size={40} className="hidden sm:block" />
                     </div>
-                    <h2 className="text-2xl sm:text-3xl font-serif font-bold text-ink mb-3 sm:mb-4">Verify your email</h2>
+                    <h2 className="text-2xl sm:text-3xl font-black text-ink mb-3 sm:mb-4">Verify your email</h2>
                     <p className="text-stone-500 mb-6 sm:mb-8 text-sm sm:text-base font-medium leading-relaxed">
                       To ensure a safe community, we require all guests to verify their email address before requesting a seat.
                     </p>
@@ -557,8 +557,8 @@ export const DinnerDetail: React.FC = () => {
                 {bookingStep === 'intro' && (
                   <div className="space-y-6 sm:space-y-8">
                     <div className="mb-6 sm:mb-10 lg:text-center">
-                       <h2 className="text-3xl sm:text-4xl font-serif font-bold text-ink mb-2">Request your seat</h2>
-                       <p className="text-stone-500 text-sm sm:text-base font-medium opacity-70 italic font-serif">A shared table awaits. Introduce yourself to {dinner.host?.displayName}.</p>
+                       <h2 className="text-3xl sm:text-4xl font-black text-ink mb-2">Request your seat</h2>
+                       <p className="text-stone-500 text-sm sm:text-base font-medium opacity-70">A shared table awaits. Introduce yourself to {dinner.host?.displayName}.</p>
                     </div>
 
                     <div className="space-y-2 sm:space-y-3">
@@ -567,7 +567,7 @@ export const DinnerDetail: React.FC = () => {
                            value={message}
                            onChange={(e) => setMessage(e.target.value)}
                            placeholder="Hi! I'm a traveler visiting from..."
-                           className="w-full bg-[#F2F1EA]/50 border border-brand-light rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 h-32 sm:h-40 focus:border-brand/40 focus:outline-none transition-all text-ink leading-relaxed font-serif italic text-sm sm:text-base"
+                           className="w-full bg-[#F2F1EA]/50 border border-brand-light rounded-[1.5rem] sm:rounded-[2rem] p-4 sm:p-6 h-32 sm:h-40 focus:border-brand/40 focus:outline-none transition-all text-ink leading-relaxed text-sm sm:text-base font-medium"
                          />
                        </div>
 
@@ -599,7 +599,7 @@ export const DinnerDetail: React.FC = () => {
                 {bookingStep === 'confirm' && (
                   <div className="space-y-6 sm:space-y-8">
                     <div className="mb-6 sm:mb-10 text-center">
-                       <h2 className="text-3xl sm:text-4xl font-serif font-bold text-ink mb-2">One final look</h2>
+                       <h2 className="text-3xl sm:text-4xl font-black text-ink mb-2">One final look</h2>
                        <p className="text-stone-500 text-sm sm:text-base font-medium opacity-70">Review your request before we send it to {dinner.host?.displayName}.</p>
                     </div>
 
@@ -654,7 +654,7 @@ export const DinnerDetail: React.FC = () => {
                       <Check size={40} className="sm:hidden" strokeWidth={3} />
                       <Check size={48} className="hidden sm:block" strokeWidth={3} />
                     </motion.div>
-                    <h2 className="text-3xl sm:text-4xl font-serif font-bold text-ink mb-3 sm:mb-4">Request Sent!</h2>
+                    <h2 className="text-3xl sm:text-4xl font-black text-ink mb-3 sm:mb-4">Request Sent!</h2>
                     <p className="text-stone-500 mb-8 sm:mb-10 text-sm sm:text-base font-medium leading-relaxed">
                       We've sent your introduction to {dinner.host?.displayName}. We'll notify you once they've confirmed your seat at the table.
                     </p>

@@ -6,7 +6,6 @@ import { DinnerCard, SkeletonCard } from '../components/DinnerCard';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
-  Map as MapIcon, 
   LayoutGrid, 
   Filter, 
   Calendar, 
@@ -14,9 +13,9 @@ import {
   ChevronDown,
   MapPin,
   X,
-  ChevronRight
+  Map as MapIcon
 } from 'lucide-react';
-import { Map, Marker, APIProvider, MapControl, ControlPosition, useMapsLibrary } from '@vis.gl/react-google-maps';
+import { useMapsLibrary } from '@vis.gl/react-google-maps';
 import { calculateDistance, formatDistance } from '../lib/utils';
 import { useRef } from 'react';
 
@@ -29,7 +28,6 @@ export const Explore: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
 
@@ -63,19 +61,53 @@ export const Explore: React.FC = () => {
   const [locationSearch, setLocationSearch] = useState('');
   const [minPrice, setMinPrice] = useState('');
   const [maxPrice, setMaxPrice] = useState('');
+  const [selectedGuests, setSelectedGuests] = useState(1);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isEditingLocation, setIsEditingLocation] = useState(false);
-  const [userLocationName, setUserLocationName] = useState('Your Current Location');
+  
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 20);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const [userLocationName, setUserLocationName] = useState('Detecting...');
   
   const places = useMapsLibrary('places');
+  const geocoding = useMapsLibrary('geocoding');
   const locationInputRef = useRef<HTMLInputElement>(null);
   const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const geocodeLocation = async (lat: number, lng: number) => {
+    if (!geocoding) return null;
+    const geocoder = new google.maps.Geocoder();
+    try {
+      const response = await geocoder.geocode({ location: { lat, lng } });
+      if (response.results[0]) {
+        const result = response.results[0];
+        let cityName = '';
+        if (result.address_components) {
+          const cityComp = result.address_components.find(c => 
+            c.types.includes('locality') || 
+            c.types.includes('postal_town')
+          );
+          if (cityComp) cityName = cityComp.long_name;
+        }
+        return cityName || result.formatted_address;
+      }
+    } catch (e) {
+      console.error('Geocoding failed', e);
+    }
+    return null;
+  };
 
   useEffect(() => {
     if (!places || !locationInputRef.current || !isEditingLocation) return;
 
     const options = {
-      fields: ['formatted_address', 'geometry', 'name'],
+      fields: ['formatted_address', 'geometry', 'name', 'address_components'],
       componentRestrictions: { country: ['NL', 'BE'] }
     };
 
@@ -87,10 +119,20 @@ export const Explore: React.FC = () => {
       if (place.geometry?.location) {
         const lat = place.geometry.location.lat();
         const lng = place.geometry.location.lng();
-        const locName = place.formatted_address || place.name || '';
+        
+        // Extract city from address components
+        let cityName = '';
+        if (place.address_components) {
+          const cityComp = place.address_components.find(c => 
+            c.types.includes('locality') || 
+            c.types.includes('postal_town')
+          );
+          if (cityComp) cityName = cityComp.long_name;
+        }
+
+        const locName = cityName || place.name || place.formatted_address || '';
         setUserLocationName(locName);
         setUserLocation({ lat, lng });
-        setMapCenter({ lat, lng });
         setIsEditingLocation(false);
       }
     });
@@ -101,17 +143,6 @@ export const Explore: React.FC = () => {
       }
     };
   }, [places, isEditingLocation]);
-
-  const [mapCenter, setMapCenter] = useState<google.maps.LatLngLiteral>({ lat: 52.52, lng: 13.405 }); // Berlin default
-  const [mapZoom, setMapZoom] = useState(11);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 80);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   const { profile } = useAuth();
 
@@ -131,15 +162,23 @@ export const Explore: React.FC = () => {
     fetch();
 
     if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(pos => {
+      navigator.geolocation.getCurrentPosition(async (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(loc);
-        setMapCenter(loc);
+        if (geocoding) {
+          const name = await geocodeLocation(pos.coords.latitude, pos.coords.longitude);
+          if (name) setUserLocationName(name);
+        } else {
+          setUserLocationName('Near You');
+        }
       }, (err) => {
         console.warn('Geolocation denied or failed:', err);
+        setUserLocationName('Select Location');
       });
+    } else {
+      setUserLocationName('Select Location');
     }
-  }, []);
+  }, [geocoding]);
 
   const filteredDinners = useMemo(() => {
     return dinners.filter(dinner => {
@@ -156,13 +195,15 @@ export const Explore: React.FC = () => {
       const maxP = maxPrice === '' ? Infinity : parseFloat(maxPrice);
       const matchesPrice = dinner.price >= minP && dinner.price <= maxP;
 
+      const matchesGuests = dinner.guestsMax >= selectedGuests;
+
       const matchesInterests = !sharedInterestsOnly || (
         profile?.interests?.some(i => dinner.host?.interests?.includes(i))
       );
 
-      return matchesSearch && matchesCuisine && matchesDietary && matchesVibes && matchesPrice && matchesInterests;
+      return matchesSearch && matchesCuisine && matchesDietary && matchesVibes && matchesPrice && matchesInterests && matchesGuests;
     });
-  }, [dinners, searchQuery, selectedCuisine, selectedDietary, selectedVibes, minPrice, maxPrice, sharedInterestsOnly, profile]);
+  }, [dinners, searchQuery, selectedCuisine, selectedDietary, selectedVibes, minPrice, maxPrice, sharedInterestsOnly, profile, selectedGuests]);
 
   const sortedDinners = useMemo(() => {
     if (!userLocation) return filteredDinners;
@@ -176,195 +217,167 @@ export const Explore: React.FC = () => {
   }, [filteredDinners, userLocation]);
 
   return (
-    <div className="bg-white min-h-screen pb-32 font-sans">
-      {/* Search & Meta Header */}
-      <motion.div 
-        layout
-        className={`sticky top-16 sm:top-20 bg-white/95 backdrop-blur-xl z-30 border-b border-brand-light transition-shadow duration-300 ${isScrolled ? 'shadow-md shadow-brand/5' : ''}`}
-        transition={{ type: 'spring', stiffness: 90, damping: 25, mass: 1.2 }}
-      >
-        <motion.div 
-          layout
-          initial={false}
-          animate={{ 
-            paddingTop: isScrolled ? 14 : 32,
-            paddingBottom: isScrolled ? 14 : 20
-          }}
-          transition={{ type: 'spring', stiffness: 90, damping: 25, mass: 1.2 }}
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
-        >
-          {/* Location Header - Uber Eats Style */}
-          <AnimatePresence mode="popLayout" initial={false}>
-            {!isScrolled && (
-              <div className="relative">
-                <motion.div 
-                  layout
-                  initial={{ height: 0, opacity: 0, y: -10 }}
-                  animate={{ height: 'auto', opacity: 1, y: 0, marginBottom: 16 }}
-                  exit={{ height: 0, opacity: 0, y: -10, marginBottom: 0 }}
-                  transition={{ type: 'spring', stiffness: 100, damping: 20 }}
-                  className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition-opacity overflow-hidden"
-                  onClick={() => setIsEditingLocation(!isEditingLocation)}
-                >
-                  <div className="w-8 h-8 bg-[#F2F1EA] rounded-full flex items-center justify-center text-brand shrink-0">
-                    <MapPin size={16} fill="currentColor" fillOpacity={0.2} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-[9px] font-black uppercase tracking-wider text-stone-400 whitespace-nowrap">Dinner near</div>
-                    <div className="flex items-center gap-1 font-serif italic text-base sm:text-lg text-ink truncate">
-                      {userLocationName}
-                      <ChevronDown size={14} className={`text-stone-400 shrink-0 transition-transform ${isEditingLocation ? 'rotate-180' : ''}`} />
-                    </div>
-                  </div>
-                </motion.div>
+    <div className="bg-white min-h-screen pt-14 sm:pt-18 pb-32 font-sans">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        {/* 1. Location Selection - ABOVE sticky part */}
+        <div className="relative mb-2">
+          <div 
+            onClick={() => setIsEditingLocation(!isEditingLocation)}
+            className="cursor-pointer group inline-block px-0.5"
+          >
+            <div className="text-[7px] font-black uppercase tracking-[0.15em] text-stone-400 group-hover:text-brand transition-colors">Dinner near</div>
+            <div className="flex items-center gap-1.5 font-bold text-base sm:text-lg text-ink">
+              <span className="border-b-2 border-brand/10 group-hover:border-brand/40 transition-all">{userLocationName}</span>
+              <ChevronDown size={14} className={`text-stone-300 transition-transform ${isEditingLocation ? 'rotate-180' : ''} group-hover:text-brand`} />
+            </div>
+          </div>
 
-                {/* Location Selection Dropdown */}
-                <AnimatePresence>
-                  {isEditingLocation && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className="absolute top-12 left-0 w-full sm:w-80 bg-white rounded-2xl shadow-2xl border border-brand-light z-50 p-4"
-                    >
-                      <div className="flex items-center gap-2 bg-[#F2F1EA] p-3 rounded-xl border border-brand-light mb-4">
-                        <Search size={16} className="text-stone-400" />
-                        <input 
-                          ref={locationInputRef}
-                          type="text" 
-                          placeholder="Search city or address..." 
-                          className="bg-transparent border-none focus:outline-none w-full text-base font-medium"
-                          value={locationSearch}
-                          onChange={(e) => setLocationSearch(e.target.value)}
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              setUserLocationName(locationSearch);
-                              setIsEditingLocation(false);
-                            }
-                          }}
-                        />
-                        {locationSearch && (
-                          <button onClick={() => setLocationSearch('')}>
-                            <X size={14} className="text-stone-400" />
-                          </button>
-                        )}
-                      </div>
-                      
-                      <div className="space-y-1">
-                        <button 
-                          onClick={() => {
-                            if ("geolocation" in navigator) {
-                              navigator.geolocation.getCurrentPosition(pos => {
-                                const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                                setUserLocation(loc);
-                                setMapCenter(loc);
-                                setUserLocationName('Your Current Location');
-                                setIsEditingLocation(false);
-                              });
-                            }
-                          }}
-                          className="w-full flex items-center gap-3 p-3 hover:bg-stone-50 rounded-xl transition-colors text-left"
-                        >
-                          <div className="w-8 h-8 bg-brand/10 text-brand rounded-full flex items-center justify-center shrink-0">
-                            <MapPin size={14} />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-ink">Use current location</div>
-                            <div className="text-[10px] text-stone-400">Recommended for accuracy</div>
-                          </div>
-                        </button>
-
-                        <div className="h-px bg-stone-100 my-2" />
-                        
-                        <div className="px-3 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-stone-400">Popular Cities</div>
-                        {['Amsterdam', 'Rotterdam', 'Brussels', 'Antwerp', 'Ghent'].map((city) => (
-                          <button 
-                            key={city}
-                            onClick={() => {
-                              setUserLocationName(city);
-                              setIsEditingLocation(false);
-                            }}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-stone-50 rounded-xl transition-colors text-left"
-                          >
-                            <div className="w-8 h-8 bg-stone-100 text-stone-400 rounded-full flex items-center justify-center shrink-0">
-                              <MapIcon size={14} />
-                            </div>
-                            <div className="text-xs font-medium text-ink">{city}</div>
-                          </button>
-                        ))}
-                      </div>
-                    </motion.div>
+          {/* Location Selection Dropdown */}
+          <AnimatePresence>
+            {isEditingLocation && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute top-full left-0 sm:left-0 sm:w-80 w-[calc(100vw-32px)] bg-white rounded-2xl shadow-2xl border border-brand-light z-50 p-4 mt-2 origin-top-left"
+              >
+                <div className="flex items-center gap-2 bg-[#F2F1EA] p-3 rounded-xl border border-brand-light mb-4">
+                  <Search size={16} className="text-stone-400" />
+                  <input 
+                    ref={locationInputRef}
+                    type="text" 
+                    placeholder="Search city or address..." 
+                    className="bg-transparent border-none focus:outline-none w-full text-base font-medium"
+                    value={locationSearch}
+                    onChange={(e) => setLocationSearch(e.target.value)}
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setUserLocationName(locationSearch);
+                        setIsEditingLocation(false);
+                      }
+                    }}
+                  />
+                  {locationSearch && (
+                    <button onClick={() => setLocationSearch('')}>
+                      <X size={14} className="text-stone-400" />
+                    </button>
                   )}
-                </AnimatePresence>
-              </div>
+                </div>
+                
+                <div className="space-y-1">
+                  <button 
+                    onClick={() => {
+                      if ("geolocation" in navigator) {
+                        navigator.geolocation.getCurrentPosition(async (pos) => {
+                          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                          setUserLocation(loc);
+                          setIsEditingLocation(false);
+                          
+                          const name = await geocodeLocation(pos.coords.latitude, pos.coords.longitude);
+                          if (name) setUserLocationName(name);
+                        });
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-stone-50 rounded-xl transition-colors text-left"
+                  >
+                    <div className="w-8 h-8 bg-brand/10 text-brand rounded-full flex items-center justify-center shrink-0">
+                      <MapPin size={14} />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-ink">Use current location</div>
+                      <div className="text-[10px] text-stone-400">Recommended for accuracy</div>
+                    </div>
+                  </button>
+
+                  <div className="h-px bg-stone-100 my-2" />
+                  
+                  <div className="px-3 py-2 text-[8px] font-black uppercase tracking-[0.2em] text-stone-400">Popular Cities</div>
+                  {['Amsterdam', 'Rotterdam', 'Brussels', 'Antwerp', 'Ghent'].map((city) => (
+                    <button 
+                      key={city}
+                      onClick={() => {
+                        setUserLocationName(city);
+                        setIsEditingLocation(false);
+                      }}
+                      className="w-full flex items-center gap-3 p-3 hover:bg-stone-50 rounded-xl transition-colors text-left"
+                    >
+                      <div className="w-8 h-8 bg-stone-100 text-stone-400 rounded-full flex items-center justify-center shrink-0">
+                        <MapIcon size={14} />
+                      </div>
+                      <div className="text-xs font-medium text-ink">{city}</div>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
+        </div>
 
-          <div className="flex flex-col lg:flex-row gap-3">
+        {/* 2. Sticky Bar - Search & Filter */}
+        <div className={`sticky top-12 sm:top-14 bg-white/95 backdrop-blur-xl z-30 -mx-4 px-4 sm:mx-0 sm:px-0 py-2 transition-all duration-300 ${isScrolled ? 'border-b border-brand-light shadow-md shadow-brand/5' : ''}`}>
+          <div className="flex items-center gap-2">
             <div className="relative flex-1 group">
-              <Search className="absolute left-5 top-1/2 -translate-y-1/2 text-stone-300 group-focus-within:text-brand transition-colors" size={18} />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300 group-focus-within:text-brand transition-colors" size={16} />
               <input 
                 type="text" 
                 placeholder="Dishes, hosts, or cuisines..." 
-                className="w-full h-12 bg-[#F2F1EA] border border-brand-light rounded-2xl pl-12 pr-6 focus:outline-none focus:border-brand/40 font-medium text-base shadow-sm"
+                className="w-full h-11 bg-[#F2F1EA] border border-brand-light rounded-xl pl-10 pr-6 focus:outline-none focus:border-brand/40 font-medium text-sm shadow-sm"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
               />
             </div>
             
-            <div className="flex gap-2 shrink-0">
-              <button 
-                onClick={() => setShowFilters(!showFilters)}
-                className="flex-1 md:flex-none px-5 py-3 rounded-2xl border bg-white border-brand-light text-stone-500 hover:border-brand/40 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap shadow-sm"
-              >
-                <Filter size={14} />
-                <span>Filters</span>
-                {(selectedDietary.length + selectedVibes.length) > 0 && (
-                  <span className="bg-brand text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px]">
-                    {selectedDietary.length + selectedVibes.length}
-                  </span>
-                )}
-              </button>
-
-              <div className="bg-[#F2F1EA] p-1 rounded-2xl flex gap-1 border border-brand-light shrink-0 shadow-sm">
-                <button 
-                  onClick={() => setViewMode('grid')}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-wider ${viewMode === 'grid' ? 'bg-white text-brand shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                >
-                  <LayoutGrid size={14} />
-                  <span className="hidden sm:inline">Grid</span>
-                </button>
-                <button 
-                  onClick={() => setViewMode('map')}
-                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-2 text-[9px] font-black uppercase tracking-wider ${viewMode === 'map' ? 'bg-white text-brand shadow-sm' : 'text-stone-400 hover:text-stone-600'}`}
-                >
-                  <MapIcon size={14} />
-                  <span className="hidden sm:inline">Map</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      </motion.div>
-
-      {/* Cuisine Filter - Scrolls naturally */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
-          {CUISINES.map(cuisine => (
-            <button
-              key={cuisine}
-              onClick={() => setSelectedCuisine(cuisine)}
-              className={`px-4 py-2 rounded-full text-[9px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border shrink-0 ${
-                selectedCuisine === cuisine 
-                ? 'bg-ink text-white border-ink shadow-lg shadow-ink/20' 
-                : 'bg-white border-brand-light text-stone-500 hover:bg-stone-50'
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`h-11 px-4 rounded-xl border transition-all flex items-center justify-center gap-2.5 shadow-sm ${
+                showFilters 
+                ? 'bg-brand/10 border-brand text-brand' 
+                : 'bg-white border-brand-light text-stone-500 hover:border-brand/40'
               }`}
             >
-              {cuisine}
+              <Filter size={16} />
+              <span className="text-[10px] font-black uppercase tracking-wider hidden md:inline">Filters</span>
+              {(selectedDietary.length + selectedVibes.length) > 0 && (
+                <span className="bg-brand text-white w-4 h-4 rounded-full flex items-center justify-center text-[8px]">
+                  {selectedDietary.length + selectedVibes.length}
+                </span>
+              )}
             </button>
-          ))}
+          </div>
         </div>
+
+        {/* 3. Cuisine Filter list */}
+        <div className="mt-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex items-center gap-2 pb-3">
+            {CUISINES.map(cuisine => (
+              <button
+                key={cuisine}
+                onClick={() => setSelectedCuisine(cuisine)}
+                className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all border shrink-0 ${
+                  selectedCuisine === cuisine 
+                  ? 'bg-ink text-white border-ink shadow-lg shadow-ink/20' 
+                  : 'bg-white border-brand-light text-stone-400 hover:bg-stone-50'
+                }`}
+              >
+                {cuisine}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Results Header */}
+        {!loading && (
+          <div className="mt-2 mb-4">
+            <h2 className="text-2xl sm:text-3xl font-black text-ink leading-tight">
+              Dineer bij {sortedDinners.length} thuischefs
+            </h2>
+            <p className="text-stone-400 font-medium text-sm mt-0.5 uppercase tracking-widest text-[10px]">
+              {selectedCuisine !== 'All' ? `${selectedCuisine} experiences` : 'Recent gatherings'} in your area
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Extended Filters Panel */}
@@ -374,12 +387,12 @@ export const Explore: React.FC = () => {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden bg-[#F2F1EA] border-b border-brand-light"
+            className="overflow-hidden bg-[#F2F1EA] border-y border-brand-light sticky top-[104px] sm:top-[120px] z-20"
           >
-            <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 md:grid-cols-3 gap-12">
+            <div className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 md:grid-cols-4 gap-8">
                <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-6 flex items-center gap-2">
-                    <Calendar size={14} />
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-4 flex items-center gap-2">
+                    <Calendar size={13} />
                     Dietary
                   </h4>
                   <div className="flex flex-wrap gap-2">
@@ -396,8 +409,8 @@ export const Explore: React.FC = () => {
                </div>
 
                <div>
-                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-6 flex items-center gap-2">
-                    <Users size={14} />
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-4 flex items-center gap-2">
+                    <Users size={13} />
                     Table Vibes
                   </h4>
                   <div className="flex flex-wrap gap-2">
@@ -413,29 +426,55 @@ export const Explore: React.FC = () => {
                   </div>
                </div>
 
+               <div>
+                  <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-4 flex items-center gap-2">
+                    <Users size={13} />
+                    Guests
+                  </h4>
+                  <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-stone-200">
+                    <button 
+                      onClick={() => setSelectedGuests(prev => Math.max(1, prev - 1))}
+                      className="w-10 h-10 rounded-xl bg-stone-50 flex items-center justify-center hover:bg-stone-100 transition-colors text-stone-400"
+                    >
+                      -
+                    </button>
+                    <div className="flex flex-col items-center">
+                      <span className="text-lg font-black text-ink">{selectedGuests}</span>
+                      <span className="text-[8px] font-bold text-stone-400 uppercase tracking-tighter">People</span>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedGuests(prev => Math.min(20, prev + 1))}
+                      className="w-10 h-10 rounded-xl bg-stone-50 flex items-center justify-center hover:bg-stone-100 transition-colors text-stone-400"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-stone-400 mt-2 font-medium">Filter by table size</p>
+               </div>
+
                <div className="flex flex-col justify-between">
                   <div>
-                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-6">Price Preference</h4>
-                    <div className="flex items-center gap-2 bg-white p-4 rounded-2xl border border-stone-200">
+                    <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-brand mb-4">Price Range</h4>
+                    <div className="flex items-center gap-2 bg-white p-3 rounded-2xl border border-stone-200">
                        <div className="relative flex-1">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-[10px] font-bold">$</span>
                           <input 
                             type="number" 
                             placeholder="Min"
                             value={minPrice}
                             onChange={e => setMinPrice(e.target.value)}
-                            className="w-full bg-stone-50 border-none rounded-xl pl-6 pr-2 py-2 text-xs focus:ring-1 focus:ring-brand"
+                            className="w-full bg-stone-50 border-none rounded-xl pl-6 pr-2 py-2 text-[10px] focus:ring-1 focus:ring-brand"
                           />
                        </div>
-                       <span className="text-stone-400 font-bold">—</span>
+                       <span className="text-stone-400 font-bold text-xs">—</span>
                        <div className="relative flex-1">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-xs font-bold">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 text-[10px] font-bold">$</span>
                           <input 
                             type="number" 
                             placeholder="Max"
                             value={maxPrice}
                             onChange={e => setMaxPrice(e.target.value)}
-                            className="w-full bg-stone-50 border-none rounded-xl pl-6 pr-2 py-2 text-xs focus:ring-1 focus:ring-brand"
+                            className="w-full bg-stone-50 border-none rounded-xl pl-6 pr-2 py-2 text-[10px] focus:ring-1 focus:ring-brand"
                           />
                        </div>
                     </div>
@@ -446,109 +485,60 @@ export const Explore: React.FC = () => {
                         setSelectedVibes([]);
                         setMinPrice('');
                         setMaxPrice('');
+                        setSelectedGuests(1);
                     }}
-                    className="mt-6 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-rose-500 transition-colors flex items-center gap-2"
+                    className="mt-4 text-[10px] font-black uppercase tracking-widest text-stone-400 hover:text-rose-500 transition-colors flex items-center gap-2"
                   >
-                    <X size={14} /> Clear all filters
+                    <X size={14} /> Clear all
                   </button>
                </div>
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-24">
-        {viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            <AnimatePresence mode="popLayout">
-              {loading ? (
-                Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
-              ) : sortedDinners.length > 0 ? (
-                sortedDinners.map(dinner => (
-                  <DinnerCard
-                    key={dinner.id}
-                    dinner={dinner}
-                    userLocation={userLocation}
-                  />
-                ))
-              ) : (
-                <div className="col-span-full text-center py-24">
-                  <div className="serif text-3xl font-black text-stone-300 mb-4">No tables found nearby</div>
-                  <p className="text-stone-400 font-medium">Try broadening your search or adjust your filters.</p>
-                  <button 
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedCuisine('All');
-                      setSelectedDietary([]);
-                      setSelectedVibes([]);
-                    }}
-                    className="mt-8 olive-btn"
-                  >
-                    Reset all filters
-                  </button>
-                </div>
-              )}
-            </AnimatePresence>
-            {hasMore && !loading && (
-              <div className="col-span-full flex justify-center mt-12">
+      </AnimatePresence>      
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-24">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-10">
+          <AnimatePresence mode="popLayout">
+            {loading ? (
+              Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+            ) : sortedDinners.length > 0 ? (
+              sortedDinners.map(dinner => (
+                <DinnerCard
+                  key={dinner.id}
+                  dinner={dinner}
+                  userLocation={userLocation}
+                />
+              ))
+            ) : (
+              <div className="col-span-full text-center py-24">
+                <div className="text-3xl font-black text-stone-300 mb-4">No tables found nearby</div>
+                <p className="text-stone-400 font-medium">Try broadening your search or adjust your filters.</p>
                 <button 
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="px-10 py-4 bg-brand text-white rounded-full font-black uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 shadow-xl shadow-brand/20"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedCuisine('All');
+                    setSelectedDietary([]);
+                    setSelectedVibes([]);
+                  }}
+                  className="mt-8 olive-btn"
                 >
-                  {loadingMore ? 'Preparing more tables...' : 'Load more experiences'}
+                  Reset all filters
                 </button>
               </div>
             )}
-          </div>
-        ) : (
-          <div className="h-[60vh] sm:h-[70vh] rounded-[40px] overflow-hidden border border-brand-light card-shadow relative bg-stone-50">
-             <Map 
-               defaultCenter={mapCenter} 
-               center={mapCenter}
-               defaultZoom={mapZoom} 
-               onCameraChanged={(ev) => {
-                 setMapCenter(ev.detail.center);
-                 setMapZoom(ev.detail.zoom);
-               }}
-               mapId="bf50a41d06e23652"
-               disableDefaultUI={true}
-             >
-               {sortedDinners.map(dinner => dinner.lat && dinner.lng && (
-                 <Marker 
-                   key={dinner.id}
-                   position={{ lat: dinner.lat, lng: dinner.lng }}
-                   onClick={() => (window.location.href = `/dinner/${dinner.id}`)}
-                 />
-               ))}
-               
-               {userLocation && window.google && (
-                 <Marker 
-                   position={userLocation}
-                   icon={{
-                     path: google.maps.SymbolPath.CIRCLE,
-                     fillColor: '#736748',
-                     fillOpacity: 1,
-                     scale: 8,
-                     strokeColor: 'white',
-                     strokeWeight: 2,
-                   }}
-                 />
-               )}
-
-               <MapControl position={ControlPosition.RIGHT_BOTTOM}>
-                 <div className="m-6 flex flex-col gap-2">
-                    <button 
-                      onClick={() => userLocation && setMapCenter(userLocation)}
-                      className="p-3 bg-white rounded-2xl shadow-xl border border-brand-light text-brand hover:scale-105 transition-transform"
-                    >
-                       <MapPin size={20} />
-                    </button>
-                 </div>
-               </MapControl>
-             </Map>
-          </div>
-        )}
+          </AnimatePresence>
+          {hasMore && !loading && (
+            <div className="col-span-full flex justify-center mt-12">
+              <button 
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="px-10 py-4 bg-brand text-white rounded-full font-black uppercase tracking-widest text-[10px] hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 shadow-xl shadow-brand/20"
+              >
+                {loadingMore ? 'Preparing more tables...' : 'Load more experiences'}
+              </button>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
